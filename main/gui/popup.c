@@ -279,7 +279,7 @@ lv_obj_t *popup_add_button(popup_t *p, const char *label, lv_event_cb_t event_cb
 	lv_obj_t *btn = lv_btn_create(p->btn_container);
 	gui_apply_pressed_style(btn);
 	int btn_w = (p->width - (DEFAULT_MARGIN * 2) - 8) / 2; // default width for up to 2 buttons
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
 	/* P4 dialogs are viewed and operated at touch distance. Keep actions
 	 * comfortably above the minimum touch size and align them with the rest
 	 * of the large-screen control language. */
@@ -380,7 +380,7 @@ popup_confirm_t *popup_confirm_show(popup_confirm_t **handle, lv_obj_t *parent, 
     lv_coord_t screen_h = popup_runtime_height();
 
     bool small = (screen_w <= 240);
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
     bool large_p4 = screen_h >= 480;
 #else
     bool large_p4 = false;
@@ -625,7 +625,7 @@ void popup_calc_size_ex(popup_calc_size_t *out, lv_coord_t min_h) {
         out->height = (screen_h <= 240) ? 140 : 160;
         out->y_offset = 10;
     } else {
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
         out->height = (lv_coord_t)(screen_h * 0.42f);
         if (out->height < 180) out->height = 180;
         if (out->height > 280) out->height = 280;

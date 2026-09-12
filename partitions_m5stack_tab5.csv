@@ -1,0 +1,23 @@
+# M5Stack Tab5 (ESP32-P4 + onboard ESP32-C6), 16MB flash.
+#
+# Mirrors the CrowPanel P4 layout. slave_fw carries the bundled C6 ESP-Hosted
+# image (~1.2MB) that the P4 pushes to the onboard C6 over SDIO at boot
+# (main/managers/p4_slave_ota_manager.c, found by NAME).
+#
+# slave_fw uses the SPIFFS data subtype (0x82) instead of a custom subtype so
+# the M5StackLauncher installs the C6 image: the Launcher only creates and
+# populates data partitions of subtype 0x81/0x82/0x83, and ignores custom
+# subtypes. GhostESP locates the partition by NAME ("slave_fw", subtype-agnostic),
+# so firmware behavior is unchanged, and the Launcher's "SPIFFS" prompt does not
+# appear (that is keyed on the label "spiffs", not on the subtype). The offset is
+# pinned to 0xD90000 so gen_esp32part errors loudly if an app slot ever grows
+# into it.
+#
+# Name,     Type, SubType, Offset,   Size, Flags
+nvs,        data, nvs,     ,         0x4000,
+otadata,    data, ota,     ,         0x2000,
+phy_init,   data, phy,     ,         0x1000,
+factory,    app,  factory, ,         0x480000,
+ota_0,      app,  ota_0,   ,         0x480000,
+ota_1,      app,  ota_1,   ,         0x480000,
+slave_fw,   data, spiffs,  0xD90000, 0x200000,

@@ -597,7 +597,7 @@ void compass_create(void) {
     lv_obj_t *content = gui_screen_create_content(compass_container, GUI_STATUS_BAR_HEIGHT);
     lv_obj_set_style_text_color(content, text, 0);
 
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
     int available = LV_MIN(LV_HOR_RES, LV_VER_RES - GUI_STATUS_BAR_H);
     compass_ring_size = (available * 55) / 100;
     if (compass_ring_size < 120) compass_ring_size = 120;

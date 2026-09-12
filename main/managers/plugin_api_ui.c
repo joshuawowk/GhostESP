@@ -7,7 +7,7 @@
 
 extern FSettings G_Settings;
 
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
 #define PLUGIN_TOUCH_BAR_BTN_SIZE 56
 #define PLUGIN_TOUCH_BAR_PADDING 8
 #else

@@ -411,7 +411,9 @@ def get_build_targets() -> List[Dict[str, str]]:
         {"name": "Cardputer ADV", "idf_target": "esp32s3", "sdkconfig_file": "configs/sdkconfig.cardputeradv", "zip_name": "CardputerADV.zip"},
         {"name": "Marauder V8", "idf_target": "esp32c5", "sdkconfig_file": "configs/sdkconfig.MarauderV8", "zip_name": "MarauderV8.zip"},
         {"name": "Marauder Pancake", "idf_target": "esp32c5", "sdkconfig_file": "configs/sdkconfig.Pancake", "zip_name": "MarauderPancake.zip"},
-        {"name": "Banshee C5", "idf_target": "esp32c5", "sdkconfig_file": "configs/sdkconfig.somethingsomething", "zip_name": "Banshee-C5.zip"}
+        {"name": "Banshee C5", "idf_target": "esp32c5", "sdkconfig_file": "configs/sdkconfig.somethingsomething", "zip_name": "Banshee-C5.zip"},
+        {"name": "M5Stack Tab5", "idf_target": "esp32p4", "sdkconfig_file": "configs/sdkconfig.m5stack_tab5", "zip_name": "M5Stack_Tab5.zip"},
+        {"name": "M5Stack Tab5 (Landscape)", "idf_target": "esp32p4", "sdkconfig_file": "configs/sdkconfig.m5stack_tab5_landscape", "zip_name": "M5Stack_Tab5_Landscape.zip"}
     ]
 
 def validate_project_directory() -> bool:
@@ -721,10 +723,10 @@ def build_target(target: Dict[str, str], env: Dict[str, str], cmd_prefix: str = 
 
     if firmware_bin:
         # Determine offsets (adjust if needed for your project)
-        # ESP32-C5's ROM expects the second-stage bootloader at 0x2000.
-        # Classic ESP32/S2 targets use 0x1000; preserve the existing
-        # placement for the remaining targets.
-        if target['idf_target'] == 'esp32c5':
+        # ESP32-C5 and ESP32-P4 ROMs expect the second-stage bootloader at
+        # 0x2000. Classic ESP32/S2 targets use 0x1000; preserve the existing
+        # placement (0x0) for the remaining targets.
+        if target['idf_target'] in ['esp32c5', 'esp32p4']:
             boot_offset = "0x2000"
         elif target['idf_target'] in ["esp32", "esp32s2"]:
             boot_offset = "0x1000"
@@ -769,8 +771,27 @@ def build_target(target: Dict[str, str], env: Dict[str, str], cmd_prefix: str = 
             firmware_offset, firmware_bin
         ]
         if target['idf_target'] == 'esp32p4':
+            # The C6 ESP-Hosted image lives in the slave_fw data partition. Read
+            # its offset from the build's flasher_args.json instead of hardcoding
+            # it -- the partition CSV has drifted the slave_fw offset over time,
+            # and a hardcoded value silently lands the image inside an app slot.
+            import json
+            slave_fw_offset = None
+            try:
+                with open(os.path.join("build", "flasher_args.json"), "r", encoding="utf-8") as fh:
+                    flash_files = json.load(fh).get("flash_files", {})
+                for off, path in flash_files.items():
+                    if "network_adapter.bin" in path:
+                        slave_fw_offset = off
+                        break
+            except (OSError, ValueError):
+                slave_fw_offset = None
+            if not slave_fw_offset:
+                slave_fw_offset = "0xd90000"
+                print("WARNING: slave_fw offset not found in flasher_args.json; "
+                      "falling back to 0xd90000")
             merge_cmd.extend([
-                "0xbe0000",
+                slave_fw_offset,
                 os.path.join("firmware", "crowpanel_p4", "network_adapter.bin")
             ])
         print(f"Merging binaries with: {' '.join(merge_cmd)}")

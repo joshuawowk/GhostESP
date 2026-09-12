@@ -316,7 +316,7 @@ static void create_file_list(void)
         gui_apply_pressed_style(btn);
         lv_obj_set_width(btn, LV_PCT(100));
         lv_obj_set_height(btn,
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
                           LV_VER_RES >= 400 ? 56 : 44
 #else
                           LV_VER_RES <= 160 ? 30 : 34
@@ -337,7 +337,7 @@ static void create_file_list(void)
         lv_label_set_text(lbl, fname);
         lv_obj_set_style_text_color(lbl, playing ? s_accent_color : (selected ? s_text_color : s_dim_color), 0);
         lv_obj_set_style_text_font(lbl,
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
                                     accessibility_get_font_body(),
 #else
                                     accessibility_get_font_small(),
@@ -345,14 +345,14 @@ static void create_file_list(void)
                                     0);
         lv_label_set_long_mode(lbl, LV_LABEL_LONG_SCROLL_CIRCULAR);
         lv_obj_set_width(lbl,
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
                          ((LV_HOR_RES * 43) / 100) - 112
 #else
                          LV_HOR_RES - 92
 #endif
         );
         lv_obj_align(lbl, LV_ALIGN_LEFT_MID,
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
                      46,
 #else
                      34,
@@ -560,7 +560,7 @@ static void audio_player_go_back(void)
 static void show_library(void)
 {
     s_screen = SCREEN_LIBRARY;
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
     /* The P4 keeps both panes alive. This call only changes keyboard/joystick
      * focus; the library remains available while a track is playing. */
     update_file_list_selection();
@@ -575,7 +575,7 @@ static void show_library(void)
 static void show_nowplaying(void)
 {
     s_screen = SCREEN_NOWPLAYING;
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
     /* Split view: the player pane is always present, so selecting a track
      * never causes the library to disappear. */
     if (s_library_cont) lv_obj_clear_flag(s_library_cont, LV_OBJ_FLAG_HIDDEN);
@@ -622,12 +622,12 @@ static lv_obj_t *create_touch_bar(lv_obj_t *parent, gui_touch_bar_t *tb)
 static void build_library(int status_bar_h)
 {
     int screen_h = LV_VER_RES - status_bar_h;
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
     const lv_coord_t panel_x = 24;
     const lv_coord_t panel_w = (LV_HOR_RES * 43) / 100;
 #endif
     int header_h =
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
                     64;
 #else
                     30;
@@ -635,7 +635,7 @@ static void build_library(int status_bar_h)
     int list_h = screen_h - header_h - AUDIO_BOTTOM_SAFE_H - 6;
 
     s_library_cont = lv_obj_create(s_root);
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
     lv_obj_set_size(s_library_cont, panel_w, screen_h);
     lv_obj_set_pos(s_library_cont, panel_x, status_bar_h);
     lv_obj_set_style_bg_color(s_library_cont, s_surface_color, 0);
@@ -649,7 +649,7 @@ static void build_library(int status_bar_h)
     lv_obj_set_style_border_width(s_library_cont, 0, 0);
     lv_obj_set_style_pad_all(s_library_cont, 0, 0);
     lv_obj_clear_flag(s_library_cont, LV_OBJ_FLAG_SCROLLABLE);
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
     lv_obj_set_style_bg_color(s_library_cont, s_surface_color, 0);
     lv_obj_set_style_bg_opa(s_library_cont, LV_OPA_70, 0);
 #endif
@@ -666,21 +666,21 @@ static void build_library(int status_bar_h)
     lv_label_set_text(title, "Library");
     lv_obj_set_style_text_color(title, s_text_color, 0);
     lv_obj_set_style_text_font(title,
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
                                accessibility_get_font_title(),
 #else
                                accessibility_get_font_small(),
 #endif
                                0);
     lv_obj_align(title, LV_ALIGN_TOP_LEFT,
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
                  78,
 #else
                  0,
 #endif
                  8);
 
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
     lv_obj_t *library_hint = create_label(s_library_cont, "Tap a track to play", accessibility_get_font_small(), s_dim_color);
     lv_obj_align(library_hint, LV_ALIGN_TOP_LEFT, 78, 36);
 
@@ -693,7 +693,7 @@ static void build_library(int status_bar_h)
 
     /* File list */
     s_file_list = lv_obj_create(s_library_cont);
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
     lv_obj_set_size(s_file_list, panel_w - 16, list_h);
 #else
     lv_obj_set_size(s_file_list, LV_HOR_RES - 8, list_h);
@@ -702,7 +702,7 @@ static void build_library(int status_bar_h)
     lv_obj_set_style_bg_opa(s_file_list, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(s_file_list, 0, 0);
     lv_obj_set_style_pad_all(s_file_list,
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
                              8,
 #else
                              4,
@@ -728,17 +728,17 @@ static void build_library(int status_bar_h)
     }
 }
 
-#ifndef CONFIG_CROWPANEL_ADVANCED_P4
+#ifndef CONFIG_GHOSTESP_P4_HMI
 static void build_nowplaying_standard(int status_bar_h)
 {
     int screen_h = LV_VER_RES - status_bar_h;
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
     const lv_coord_t player_x = 24 + ((LV_HOR_RES * 43) / 100) + 16;
     const lv_coord_t player_w = LV_HOR_RES - player_x - 24;
 #endif
 
     s_np_cont = lv_obj_create(s_root);
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
     lv_obj_set_size(s_np_cont, player_w, screen_h);
     lv_obj_set_pos(s_np_cont, player_x, status_bar_h);
     lv_obj_set_style_bg_color(s_np_cont, s_surface_color, 0);
@@ -752,11 +752,11 @@ static void build_nowplaying_standard(int status_bar_h)
     lv_obj_set_style_border_width(s_np_cont, 0, 0);
     lv_obj_set_style_pad_all(s_np_cont, 0, 0);
     lv_obj_clear_flag(s_np_cont, LV_OBJ_FLAG_SCROLLABLE);
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
     lv_obj_set_style_bg_color(s_np_cont, s_surface_color, 0);
     lv_obj_set_style_bg_opa(s_np_cont, LV_OPA_70, 0);
 #endif
-#ifndef CONFIG_CROWPANEL_ADVANCED_P4
+#ifndef CONFIG_GHOSTESP_P4_HMI
     lv_obj_add_flag(s_np_cont, LV_OBJ_FLAG_HIDDEN);
 #endif
 
@@ -765,7 +765,7 @@ static void build_nowplaying_standard(int status_bar_h)
     lv_obj_set_style_text_color(s_np_title, s_text_color, 0);
     lv_obj_set_style_text_font(s_np_title, accessibility_get_font_title(), 0);
     lv_obj_set_width(s_np_title,
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
                      player_w - 48
 #else
                      LV_HOR_RES - 100
@@ -781,7 +781,7 @@ static void build_nowplaying_standard(int status_bar_h)
     lv_obj_set_style_text_color(s_meta_label, s_dim_color, 0);
     lv_obj_set_style_text_font(s_meta_label, accessibility_get_font_small(), 0);
     lv_obj_set_width(s_meta_label,
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
                      player_w - 32
 #else
                      LV_HOR_RES - 24
@@ -795,7 +795,7 @@ static void build_nowplaying_standard(int status_bar_h)
     /* Progress bar */
     s_progress_track = lv_obj_create(s_np_cont);
     lv_obj_set_size(s_progress_track,
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
                     player_w - 32,
 #else
                     LV_HOR_RES - 24,
@@ -823,7 +823,7 @@ static void build_nowplaying_standard(int status_bar_h)
     lv_obj_set_style_text_color(s_time_label, s_dim_color, 0);
     lv_obj_set_style_text_font(s_time_label, accessibility_get_font_small(), 0);
     lv_obj_set_width(s_time_label,
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
                      player_w - 32
 #else
                      LV_HOR_RES - 24
@@ -835,31 +835,31 @@ static void build_nowplaying_standard(int status_bar_h)
 
     /* Transport row */
     int transport_y =
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
                       (screen_h >= 400) ? 112 : 96;
 #else
                       88;
 #endif
     int btn_h =
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
                   (screen_h >= 400) ? 56 : 46;
 #else
                   (screen_h > 200) ? 42 : 34;
 #endif
     int transport_gap =
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
                        (player_w >= 420) ? 118 : 92;
 #else
                        84;
 #endif
     int side_btn_w =
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
                    (screen_h >= 400) ? 72 : 60;
 #else
                    56;
 #endif
     int play_btn_w =
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
                    (screen_h >= 400) ? 82 : 68;
 #else
                    64;
@@ -886,13 +886,13 @@ static void build_nowplaying_standard(int status_bar_h)
     lv_label_set_text(s_volume_label, "Vol 85%");
 
     int volume_btn_w =
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
                       (player_w >= 420) ? 56 : 44;
 #else
                       40;
 #endif
     int volume_btn_h =
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
                       (LV_VER_RES >= 400) ? 42 : 34;
 #else
                       30;
@@ -905,17 +905,17 @@ static void build_nowplaying_standard(int status_bar_h)
 
     s_vol_track = lv_obj_create(s_np_cont);
     lv_coord_t volume_track_w =
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
                                 player_w - 2 * (volume_btn_w + 28);
 #else
                                 LV_HOR_RES - 2 * (volume_btn_w + 28);
 #endif
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
     if (volume_track_w > 520) volume_track_w = 520;
 #endif
     if (volume_track_w < 80) volume_track_w = 80;
     lv_obj_set_size(s_vol_track, volume_track_w,
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
                     16
 #else
                     12
@@ -949,7 +949,7 @@ static void build_nowplaying(int status_bar_h)
     build_nowplaying_standard(status_bar_h);
 }
 
-#else /* CONFIG_CROWPANEL_ADVANCED_P4 */
+#else /* CONFIG_GHOSTESP_P4_HMI */
 
 LV_IMG_DECLARE(speaker_50dp_FFFFFF_FILL0_wght400_GRAD0_opsz48);
 
@@ -1143,7 +1143,7 @@ static void build_nowplaying(int status_bar_h)
     build_nowplaying_p4(status_bar_h);
 }
 
-#endif /* CONFIG_CROWPANEL_ADVANCED_P4 */
+#endif /* CONFIG_GHOSTESP_P4_HMI */
 
 void audio_player_create(void)
 {
@@ -1363,7 +1363,7 @@ static void audio_player_input_handler(InputEvent *event)
             bool was_dragged = touch_drag_release(&s_touch_drag, d);
             if (was_dragged) return;
 
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
             /* Split-view input is routed by pane, not by the last selected
              * sub-screen. This keeps the library usable while playing. */
             bool in_library = point_in_obj(s_file_list, d->point.x, d->point.y) ||

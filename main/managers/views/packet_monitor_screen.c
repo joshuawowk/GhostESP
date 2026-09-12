@@ -518,7 +518,7 @@ static void packet_monitor_input(InputEvent *event) {
     }
 
     if (!s_mode_options) return;
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
     /* CrowPanel P4 touch is delivered through the manual InputEvent queue,
      * not a registered LVGL indev, so LV_EVENT_CLICKED is never generated.
      * Resolve the released point against the actual row coordinates here.

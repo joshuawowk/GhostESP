@@ -122,7 +122,7 @@ void splash_create(void) {
     lv_img_set_zoom(img, 192);
     lv_obj_align(img, LV_ALIGN_CENTER, 0, -30);
   }
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
   else if (LV_HOR_RES >= 800) {
     lv_img_set_src(img, &ghostesplogo);
     lv_img_set_size_mode(img, LV_IMG_SIZE_MODE_REAL);

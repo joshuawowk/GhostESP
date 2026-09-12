@@ -258,6 +258,65 @@ menu "Ghost ESP Options"
             uses the SC2336 sensor wiring documented by Elecrow and is
             independent of whether the display uses MIPI or RGB transport.
 
+    config M5STACK_TAB5
+        bool "Enable M5Stack Tab5 (ESP32-P4 + onboard ESP32-C6)"
+        default n
+        depends on IDF_TARGET_ESP32P4
+        help
+            Enable the M5Stack Tab5: an ESP32-P4 host with an onboard
+            ESP32-C6 radio reached over SDIO/ESP-Hosted, a 720x1280
+            MIPI-DSI panel, GT911 touch and two PI4IOE5V6408 I/O expanders.
+            Reuses the shared ESP32-P4 large-touch HMI code path.
+
+    choice M5STACK_TAB5_PANEL
+        bool "M5Stack Tab5 panel variant"
+        default M5STACK_TAB5_PANEL_ILI9881C
+        depends on M5STACK_TAB5
+        help
+            Select the Tab5 display panel. Early units use an ILI9881C with
+            GT911 touch (I2C 0x14/0x5D); units built from 2026-04-28 use an
+            ST7123/ST7121 with touch at I2C 0x55 (not yet supported).
+
+        config M5STACK_TAB5_PANEL_ILI9881C
+            bool "720x1280 ILI9881C MIPI-DSI (GT911 touch)"
+            help
+                Two-lane MIPI-DSI ILI9881C panel with GT911 capacitive touch.
+
+        config M5STACK_TAB5_PANEL_ST7123
+            bool "ST7123/ST7121 MIPI-DSI"
+            help
+                Newer Tab5 panel variant (units from 2026-04-28), touch at
+                I2C 0x55. The driver auto-detects ST7121 vs ST7123.
+    endchoice
+
+    config M5STACK_TAB5_LANDSCAPE
+        bool "M5Stack Tab5 landscape orientation (PPA-rotated)"
+        default n
+        depends on M5STACK_TAB5
+        help
+            Render the UI in landscape (1280x720) and rotate it 90 degrees onto
+            the physically-portrait 720x1280 panel using the ESP32-P4 PPA
+            hardware engine. Leave disabled for native portrait (720x1280).
+
+    config M5STACK_TAB5_KEYBOARD
+        bool "M5Stack Tab5 I2C keyboard (J9, GPIO0/GPIO1)"
+        default y if M5STACK_TAB5
+        depends on M5STACK_TAB5
+        select USE_HW_KB
+        help
+            Support the M5Stack Tab5 keyboard (M5Unit-KEYBOARD, I2C 0x6D on the
+            J9 connector: SDA GPIO0 / SCL GPIO1) on I2C_NUM_1, independent of the
+            system/touch bus on I2C_NUM_0. Keys drive text entry and navigation.
+
+    config GHOSTESP_P4_HMI
+        bool
+        default y if CROWPANEL_ADVANCED_P4 || M5STACK_TAB5
+        help
+            Shared ESP32-P4 large-touch HMI behavior: direct-mode LVGL
+            flush, PPA buffer copy, large-screen layouts and SDMMC
+            controller reuse under ESP-Hosted. Selected automatically by the
+            CrowPanel Advanced P4 and M5Stack Tab5 boards; not user-visible.
+
     config USE_ILI9341_2
         bool "Use ILI9341 2nd Display Driver"
         default n

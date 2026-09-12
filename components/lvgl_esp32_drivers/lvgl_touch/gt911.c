@@ -152,7 +152,7 @@ bool gt911_read(lv_indev_drv_t *drv, lv_indev_data_t *data) {
     static lv_indev_state_t last_state = LV_INDEV_STATE_REL;
     // Jitter filter state (raw space, before scaling). It must be reset when
     // a contact ends; otherwise a new tap inherits the previous tap's anchor.
-#ifndef CONFIG_CROWPANEL_ADVANCED_P4
+#ifndef CONFIG_GHOSTESP_P4_HMI
     static int16_t filt_x = 0, filt_y = 0;
     static bool filt_inited = false;
 #endif
@@ -172,7 +172,7 @@ bool gt911_read(lv_indev_drv_t *drv, lv_indev_data_t *data) {
         data->point.x = last_x;
         data->point.y = last_y;
         last_state = LV_INDEV_STATE_REL;
-#ifndef CONFIG_CROWPANEL_ADVANCED_P4
+#ifndef CONFIG_GHOSTESP_P4_HMI
         filt_inited = false;
 #endif
         data->state = last_state;
@@ -188,7 +188,7 @@ bool gt911_read(lv_indev_drv_t *drv, lv_indev_data_t *data) {
     uint16_t raw_x = point[0] | ((uint16_t)point[1] << 8);
     uint16_t raw_y = point[2] | ((uint16_t)point[3] << 8);
 
-#ifndef CONFIG_CROWPANEL_ADVANCED_P4
+#ifndef CONFIG_GHOSTESP_P4_HMI
     // Keep the legacy jitter filter on smaller panels. The large P4 has
     // enough coordinate precision that filtering is more likely to make a
     // small control feel unresponsive than to improve it.

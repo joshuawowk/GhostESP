@@ -39,7 +39,7 @@ static void keyboard_input_callback(const char *text);
 
 static const lv_font_t *terminal_font(void) {
     uint8_t size = settings_get_terminal_font_size(&G_Settings);
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
     switch (size) {
         case 0: return &lv_font_montserrat_14;
         case 2: return &lv_font_montserrat_20;
@@ -68,7 +68,7 @@ static bool terminal_dualcomm_only = false;
 #define PROCESSING_INTERVAL_MS 10
 #define PROCESSING_INTERVAL_FAST_MS 5
 #define MIN_SCREEN_SIZE 239
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
 #define BUTTON_SIZE 48
 #define BUTTON_PADDING 6
 #else
@@ -842,7 +842,7 @@ void terminal_view_create(void) {
 
     const int STATUS_BAR_HEIGHT = GUI_STATUS_BAR_HEIGHT;
     const int padding = 3;
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
     const int textbox_height = GUI_CONTROL_H - 4;
 #else
     const int textbox_height = 28;

@@ -1,4 +1,7 @@
 #include "managers/views/keyboard_screen.h"
+#if defined(CONFIG_M5STACK_TAB5_LANDSCAPE) && defined(CONFIG_M5STACK_TAB5_KEYBOARD)
+#include "vendor/drivers/tab5_keyboard.h"
+#endif
 #include "core/serial_manager.h"
 #include "managers/views/options_screen.h"
 #include "managers/views/terminal_screen.h"
@@ -881,7 +884,7 @@ static void recreate_keyboard_buttons() {
     int keys_start_y = status_bar_height + display_height + padding * 2;
     int keys_area_height = screen_height - keys_start_y;
     int key_height = (keys_area_height / num_rows) - 4;
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
     if (key_height > GUI_CONTROL_H) key_height = GUI_CONTROL_H;
 #endif
     int key_y = keys_start_y;
@@ -976,7 +979,7 @@ static void keyboard_build_step(lv_timer_t *t) {
     int keys_start_y = status_bar_height + display_height + padding * 2;
     int keys_area_height = screen_height - keys_start_y;
     int key_height = (keys_area_height / num_rows) - 4;
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
     if (key_height > GUI_CONTROL_H) key_height = GUI_CONTROL_H;
 #endif
     int built = 0;
@@ -1999,6 +2002,14 @@ static void build_key_matrix(void) {
         lv_obj_add_event_cb(key_matrix, key_matrix_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
         /* Transparent so the gutter shows the root background, iOS style. */
         lv_obj_set_style_bg_opa(key_matrix, LV_OPA_TRANSP, LV_PART_MAIN);
+#if defined(CONFIG_M5STACK_TAB5_LANDSCAPE) && defined(CONFIG_M5STACK_TAB5_KEYBOARD)
+        /* Landscape with the physical Tab5 keyboard attached: suppress the
+         * on-screen keys and type via the hardware keyboard. The text field and
+         * physical-key input path stay active. */
+        if (tab5_keyboard_present()) {
+            lv_obj_add_flag(key_matrix, LV_OBJ_FLAG_HIDDEN);
+        }
+#endif
     }
 
     lv_obj_set_pos(key_matrix, m.pad_h, m.matrix_y);

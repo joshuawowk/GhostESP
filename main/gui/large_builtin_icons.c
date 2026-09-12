@@ -111,7 +111,7 @@ const lv_img_dsc_t *gui_large_builtin_icon(const lv_img_dsc_t *source) {
 #if defined(CONFIG_IDF_TARGET_ESP32P4)
     const lv_img_dsc_t *native = p4_native_icon(source);
     if (native != source) return native;
-#if defined(CONFIG_CROWPANEL_ADVANCED_P4)
+#if defined(CONFIG_GHOSTESP_P4_HMI)
     if (!source || LV_MIN(LV_HOR_RES, LV_VER_RES) < 480 ||
         source->header.w != LARGE_ICON_SOURCE_SIZE ||
         source->header.h != LARGE_ICON_SOURCE_SIZE ||

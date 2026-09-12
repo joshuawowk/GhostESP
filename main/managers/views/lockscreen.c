@@ -149,7 +149,7 @@ static void lockscreen_fav_launch(const char *name);
 static void lockscreen_fav_update_scroll_buttons(void);
 #endif
 
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
 static const char *lockscreen_fav_type(const char *name) {
     if (!name) return "Favorite";
     if (strncasecmp(name, "ir:", 3) == 0) return "IR Remote";
@@ -610,7 +610,7 @@ static void lockscreen_build_numpad(void) {
     bool landscape = (content_w > content_h && content_h <= 146);
 
     int gap = 2;
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
     gap = 8;
 #endif
     lv_obj_set_style_pad_row(s_numpad_cont, gap, 0);
@@ -633,7 +633,7 @@ static void lockscreen_build_numpad(void) {
     } else {
         int min_numpad_y = 94;
         int bottom_margin = 10;
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
         min_numpad_y = content_h / 4;
         bottom_margin = 20;
 #endif
@@ -641,7 +641,7 @@ static void lockscreen_build_numpad(void) {
         if (numpad_h < 36) numpad_h = 36;
         btn_h = (numpad_h - (NUMPAD_ROWS - 1) * gap) / NUMPAD_ROWS;
         if (LV_VER_RES > 240) {
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
             if (btn_h > GUI_CONTROL_H) btn_h = GUI_CONTROL_H;
 #else
             if (btn_h > 42) btn_h = 42;
@@ -684,7 +684,7 @@ static void lockscreen_build_numpad(void) {
         lv_obj_t *lbl = lv_label_create(s_numpad_btns[i]);
         lv_label_set_text(lbl, k_numpad_labels[i]);
         const lv_font_t *f;
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
         f = btn_h >= 56 ? gui_font_title() : gui_font_body();
 #else
         f = (btn_h < 20) ? &lv_font_montserrat_10 : (btn_h >= 36 ? &lv_font_montserrat_16 : &lv_font_montserrat_12);
@@ -702,7 +702,7 @@ static void lockscreen_build_companion_layout(int content_w, int content_h) {
     int ghost_sz = 72;
     if (content_h <= 120) {
         ghost_sz = 64;
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
     } else if (content_h >= 480) {
         ghost_sz = 160;
     } else if (content_h >= 320) {
@@ -922,7 +922,7 @@ static void lockscreen_show_favorites(void) {
 #endif
     uint8_t theme = settings_get_menu_theme(&G_Settings);
     lv_color_t bg = lv_color_hex(theme_palette_get_background(theme));
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
     lv_color_t text = lv_color_hex(theme_palette_get_text(theme));
 #endif
     // Reserve the touch bar height only when the bar is actually shown.
@@ -967,7 +967,7 @@ static void lockscreen_show_favorites(void) {
     lv_obj_set_style_radius(s_fav_list, 0, 0);
     lv_obj_set_style_pad_all(s_fav_list, 2, 0);
     lv_obj_set_style_pad_row(s_fav_list, 3, 0);
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
     // Landscape P4 panels have enough width for a touch-friendly launcher
     // grid. Keep the cards bounded so the 1024px panels do not become a
     // stretched single-column list.
@@ -1003,7 +1003,7 @@ static void lockscreen_show_favorites(void) {
     if (s_fav_btns) {
         for (int i = 0; i < s_fav_count; i++) {
         const char *name = settings_get_favorite(&G_Settings, i);
-#ifndef CONFIG_CROWPANEL_ADVANCED_P4
+#ifndef CONFIG_GHOSTESP_P4_HMI
         const char *display = name ? name : "";
         // Strip prefix for display: "ir:/path" -> basename, "menu:WiFi" -> "WiFi"
         const char *colon = name ? strchr(name, ':') : NULL;
@@ -1018,7 +1018,7 @@ static void lockscreen_show_favorites(void) {
         if (!display || !display[0]) display = name ? name : "";
 #endif
         lv_obj_t *btn = lv_btn_create(s_fav_list);
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
         lv_obj_set_width(btn, fav_card_w);
         lv_obj_set_height(btn, 112);
         lv_obj_set_style_pad_all(btn, 12, 0);
@@ -1034,7 +1034,7 @@ static void lockscreen_show_favorites(void) {
         // Flat options-style row: plain surface, no border chrome.
         gui_menu_card_apply(btn, true, surface, surface, 0, 0);
         lv_obj_t *lbl = lv_label_create(btn);
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
         lv_label_set_text(lbl, lockscreen_fav_display_name(name));
         lv_label_set_long_mode(lbl, LV_LABEL_LONG_DOT);
         lv_obj_set_width(lbl, fav_card_w - 24);
@@ -1071,7 +1071,7 @@ static void lockscreen_show_favorites(void) {
         // Back row: identical styling to the favorite rows so joystick users
         // can scroll to it and press SELECT to leave the overlay.
         lv_obj_t *back_btn = lv_btn_create(s_fav_list);
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
         lv_obj_set_width(back_btn, list_w - 4);
         lv_obj_set_height(back_btn, 56);
         lv_obj_set_style_pad_all(back_btn, 8, 0);
@@ -1088,7 +1088,7 @@ static void lockscreen_show_favorites(void) {
         lv_label_set_long_mode(back_lbl, LV_LABEL_LONG_DOT);
         lv_obj_set_width(back_lbl, list_w - 24);
         lv_obj_set_style_text_align(back_lbl, LV_TEXT_ALIGN_CENTER, 0);
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
         lv_obj_set_style_text_font(back_lbl, gui_font_body(), 0);
 #else
         lv_obj_set_style_text_font(back_lbl, accessibility_get_font_body(), 0);
@@ -1792,19 +1792,19 @@ void lockscreen_create(void) {
     } else {
         int min_numpad_y = 94;
         int bottom_margin = 10;
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
         min_numpad_y = content_h / 4;
         bottom_margin = 20;
 #endif
         int numpad_gap = 2;
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
         numpad_gap = 8;
 #endif
         int numpad_h = content_h - min_numpad_y - bottom_margin;
         if (numpad_h < 36) numpad_h = 36;
         int btn_h = (numpad_h - (NUMPAD_ROWS - 1) * numpad_gap) / NUMPAD_ROWS;
         if (LV_VER_RES > 240) {
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
             if (btn_h > GUI_CONTROL_H) btn_h = GUI_CONTROL_H;
 #else
             if (btn_h > 42) btn_h = 42;
@@ -1817,7 +1817,7 @@ void lockscreen_create(void) {
         int numpad_y = content_h - grid_h - bottom_margin;
         if (numpad_y < min_numpad_y) numpad_y = min_numpad_y;
 
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
         int ghost_sz = content_h >= 480 ? 160 : 112;
         int group_h = ghost_sz + 54;
         int icon_y = (numpad_y - group_h) / 2;
@@ -1835,7 +1835,7 @@ void lockscreen_create(void) {
         s_ghost = lv_img_create(s_content);
         lv_img_set_src(s_ghost, LOCKSCREEN_SPRITE(tired_50x50));
         lv_obj_set_pos(s_ghost, (content_w - 50) / 2, s_ghost_base_y + lockscreen_ghost_bob_offset());
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
         lv_img_set_zoom(s_ghost, (ghost_sz * 256) / 50);
 #endif
 
@@ -1851,7 +1851,7 @@ void lockscreen_create(void) {
 
         s_dots = lv_label_create(s_content);
         lv_obj_set_style_text_font(s_dots,
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
                                    gui_font_body(),
 #else
                                    &lv_font_montserrat_16,

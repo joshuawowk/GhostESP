@@ -8,7 +8,15 @@
 #include "esp_log.h"
 #include "lvgl/src/draw/sw/lv_draw_sw.h"
 #include "lvgl/src/draw/sw/lv_draw_sw_blend.h"
+#if defined(CONFIG_CROWPANEL_ADVANCED_P4)
 #include "vendor/drivers/crowpanel_p4_display.h"
+#define P4_MARK_DIRTY_ROWS(y1, y2) crowpanel_p4_display_mark_dirty_rows((y1), (y2))
+#elif defined(CONFIG_M5STACK_TAB5)
+#include "vendor/drivers/tab5_display.h"
+#define P4_MARK_DIRTY_ROWS(y1, y2) tab5_display_mark_dirty_rows((y1), (y2))
+#else
+#define P4_MARK_DIRTY_ROWS(y1, y2) ((void)(y1), (void)(y2))
+#endif
 
 #define PPA_MIN_PIXELS 256
 #define PPA_STATS_POLL_INTERVAL 256
@@ -84,8 +92,8 @@ static void ppa_init_buf(lv_draw_ctx_t *draw_ctx)
     lv_draw_ppa_v8_ctx_t *ctx = (lv_draw_ppa_v8_ctx_t *)draw_ctx;
     if (ctx->sw_init_buf) ctx->sw_init_buf(draw_ctx);
     if (draw_ctx->buf_area) {
-        crowpanel_p4_display_mark_dirty_rows(draw_ctx->buf_area->y1,
-                                              draw_ctx->buf_area->y2);
+        P4_MARK_DIRTY_ROWS(draw_ctx->buf_area->y1,
+                           draw_ctx->buf_area->y2);
     }
 }
 
@@ -189,7 +197,7 @@ static void ppa_blend(lv_draw_ctx_t *draw_ctx, const lv_draw_sw_blend_dsc_t *dsc
     /* In direct mode LVGL passes the full framebuffer as the flush area.
      * Track the actual draw area here instead, so presentation can remain
      * row-limited when only part of the screen changed. */
-    crowpanel_p4_display_mark_dirty_rows(area.y1, area.y2);
+    P4_MARK_DIRTY_ROWS(area.y1, area.y2);
     ppa_log_stats(ctx, draw_ctx);
 
     bool aligned = draw_ctx->buf &&

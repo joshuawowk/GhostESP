@@ -1338,7 +1338,7 @@ static void refresh_task(void *arg) {
     bool caps_task = arg != NULL;
     cloud_store_pause_ap_if_needed();
     esp_err_t err = ESP_OK;
-#if defined(CONFIG_CROWPANEL_ADVANCED_P4)
+#if defined(CONFIG_GHOSTESP_P4_HMI)
     // P4 can obtain its lease before SNTP has completed. Do not let the first
     // Cloud Store request race the certificate validity check.
     if (!wifi_manager_wait_for_valid_time(20000)) {

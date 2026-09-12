@@ -32,6 +32,9 @@
 #include "managers/p4_slave_ota_manager.h"
 #include "managers/ghost_raw_radio.h"
 #endif
+#ifdef CONFIG_M5STACK_TAB5
+#include "vendor/drivers/tab5_display.h"
+#endif
 #include "vendor/drivers/aw9523.h"
 #include "vendor/drivers/pcf8563.h"
 #include <sys/time.h>
@@ -761,6 +764,18 @@ void app_main(void) {
      * performs P4 sleep-retention startup after C constructors; initializing
      * Hosted from the constructor races that initialization and can trip the
      * sleep-retention module assertion before app_main starts. */
+#ifdef CONFIG_M5STACK_TAB5
+    /* The Tab5's onboard ESP32-C6 radio is powered through PI4IOE expander 2
+     * (I2C 0x44) output P0 (WLAN_PWR_EN). Assert it (and the display rails)
+     * before the SDIO transport probes the C6, or the radio never enumerates. */
+    {
+        esp_err_t tab5_pwr = tab5_board_power_init();
+        if (tab5_pwr != ESP_OK) {
+            ESP_LOGE(TAG, "Tab5 board power init failed: %s -- C6 may not enumerate",
+                     esp_err_to_name(tab5_pwr));
+        }
+    }
+#endif
     ESP_LOGI(TAG, "Starting ESP-Hosted C6 transport...");
     esp_err_t hosted_init_err = esp_hosted_init();
     bool hosted_ready = hosted_init_err == ESP_OK;
@@ -1197,15 +1212,15 @@ void app_main(void) {
         bool initialized = false;
         int32_t data_pin = settings_get_rgb_data_pin(&G_Settings);
         int rgb_led_count = settings_get_rgb_led_count(&G_Settings);
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
-        /* CrowPanel P4 has no user RGB LED on the generic LEDC pins.  The
+#ifdef CONFIG_GHOSTESP_P4_HMI
+        /* P4 HMI boards have no user RGB LED on the generic LEDC pins.  The
          * generic fallback defaults can otherwise resolve to GPIO0 and claim
          * LEDC channel 0, which is also the MIPI panel backlight channel. */
         data_pin = GPIO_NUM_NC;
         rgb_led_count = 0;
 #endif
         if (rgb_led_count <= 0) {
-#ifndef CONFIG_CROWPANEL_ADVANCED_P4
+#ifndef CONFIG_GHOSTESP_P4_HMI
             if (rgb_manager.num_leds > 0) {
                 rgb_led_count = rgb_manager.num_leds;
             } else if (CONFIG_NUM_LEDS > 0) {

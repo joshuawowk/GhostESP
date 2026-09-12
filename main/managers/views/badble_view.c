@@ -444,7 +444,7 @@ void badble_view_create(void) {
 
     g_ov = options_view_create(root, "BadBLE");
     menu_container = options_view_get_list(g_ov);
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
     /* Keep the P4 canvas edge-to-edge while the shared list padding keeps
      * each option row visually inset from the panel edges. */
     lv_obj_set_width(menu_container, GUI_OPTIONS_LIST_WIDTH);

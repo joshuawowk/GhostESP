@@ -327,12 +327,20 @@ failed:
 #include "vendor/drivers/axs15231b.h"
 #endif
 
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
 #include "gui/lv_draw_ppa_v8.h"
 #include "managers/views/plugin_runner_view.h"
 #include "lvgl_i2c/i2c_manager.h"
 #include "lvgl_touch/touch_driver.h"
+#if defined(CONFIG_CROWPANEL_ADVANCED_P4)
 #include "vendor/drivers/crowpanel_p4_display.h"
+#elif defined(CONFIG_M5STACK_TAB5)
+#include "vendor/drivers/tab5_display.h"
+#endif
+#endif
+
+#ifdef CONFIG_M5STACK_TAB5_KEYBOARD
+#include "vendor/drivers/tab5_keyboard.h"
 #endif
 
 #ifdef CONFIG_CROWPANEL_EPAPER_42
@@ -716,7 +724,7 @@ static __attribute__((unused)) void invert_flush_cb(lv_disp_drv_t *drv, const lv
         }
     }
     
-#if defined(CONFIG_CROWPANEL_ADVANCED_P4)
+#if defined(CONFIG_GHOSTESP_P4_HMI)
     // Direct-mode flushes carry the full framebuffer, including intermediate
     // redraws. Mirror only the completed refresh, as the P4 panel driver does.
     if (!drv->direct_mode || lv_disp_flush_is_last(drv)) {
@@ -732,6 +740,8 @@ static __attribute__((unused)) void invert_flush_cb(lv_disp_drv_t *drv, const lv
     i80_display_flush_cb(drv, area, color_p);
 #elif defined(CONFIG_CROWPANEL_ADVANCED_P4)
     crowpanel_p4_display_flush_cb(drv, area, color_p);
+#elif defined(CONFIG_M5STACK_TAB5)
+    tab5_display_flush_cb(drv, area, color_p);
 #elif defined(CONFIG_CROWPANEL_EPAPER_42)
     crowpanel_epaper_flush_cb(drv, area, color_p);
 #else
@@ -739,7 +749,7 @@ static __attribute__((unused)) void invert_flush_cb(lv_disp_drv_t *drv, const lv
 #endif
 }
 
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
 static void (*s_p4_buffer_copy)(lv_draw_ctx_t *, void *, lv_coord_t, const lv_area_t *,
                                 void *, lv_coord_t, const lv_area_t *);
 
@@ -1903,8 +1913,9 @@ void apply_power_management_config(bool power_save_enabled) {
   }
   rgb_manager_power_transition_end();
 
-#if defined(CONFIG_LV_DISP_BACKLIGHT_PWM) && !defined(CONFIG_IS_ATOMS3R)
+#if defined(CONFIG_LV_DISP_BACKLIGHT_PWM) && !defined(CONFIG_IS_ATOMS3R) && !defined(CONFIG_M5STACK_TAB5)
   // Reconfigure LEDC timer after power management changes to maintain stable PWM
+  // (Tab5 owns its own backlight LEDC in tab5_display.c; do not touch its timer.)
   ledc_timer_config_t ledc_timer = {
       .speed_mode = LEDC_LOW_SPEED_MODE,
       .duty_resolution = LEDC_TIMER_10_BIT,
@@ -1999,8 +2010,9 @@ void display_manager_init(void) {
 
   apply_power_management_config(settings_get_power_save_enabled(&G_Settings));
 
-  // Configure LEDC timer for backlight (only for PWM boards or TDisplay S3)
-#if defined(CONFIG_USE_TDISPLAY_S3) || (defined(CONFIG_LV_DISP_BACKLIGHT_PWM) && !defined(CONFIG_IS_ATOMS3R))
+  // Configure LEDC timer for backlight (only for PWM boards or TDisplay S3).
+  // Tab5 owns its backlight LEDC in tab5_display.c, so it is excluded here.
+#if defined(CONFIG_USE_TDISPLAY_S3) || (defined(CONFIG_LV_DISP_BACKLIGHT_PWM) && !defined(CONFIG_IS_ATOMS3R) && !defined(CONFIG_M5STACK_TAB5))
   ledc_timer_config_t ledc_timer = {
       .speed_mode = LEDC_LOW_SPEED_MODE,
       .duty_resolution = LEDC_TIMER_10_BIT,
@@ -2116,6 +2128,14 @@ ESP_LOGI(TAG, "T-Deck trackball ISRs registered");
              esp_err_to_name(crowpanel_i2c_ret));
   }
 #endif
+#ifdef CONFIG_M5STACK_TAB5
+  /* Bring up the system I2C bus + PI4IOE rails (idempotent; also asserted early
+   * in app_main before ESP-Hosted). Panel/touch power lives on the expanders. */
+  esp_err_t tab5_pwr_ret = tab5_board_power_init();
+  if (tab5_pwr_ret != ESP_OK) {
+    ESP_LOGE(TAG, "Tab5 board power init failed: %s", esp_err_to_name(tab5_pwr_ret));
+  }
+#endif
 #if defined(CONFIG_CROWPANEL_ADVANCE_24_LCD) || defined(CONFIG_CROWPANEL_ADVANCE_28_LCD)
   /* The 2.4/2.8 FT6336U shares the I2C bus with the RTC. Initialize it before
    * the LVGL driver so touch probing cannot race another early I2C client. */
@@ -2200,6 +2220,23 @@ ESP_LOGI(TAG, "T-Deck trackball ISRs registered");
     return;
   }
   touch_driver_init();
+#elif defined(CONFIG_M5STACK_TAB5)
+  esp_err_t ret = tab5_display_init();
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "M5Stack Tab5 display initialization failed: %s", esp_err_to_name(ret));
+    return;
+  }
+  ret = lvgl_i2c_init(CONFIG_LV_I2C_TOUCH_PORT);
+  if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
+    ESP_LOGE(TAG, "Tab5 touch I2C initialization failed: %s", esp_err_to_name(ret));
+    return;
+  }
+  ret = tab5_display_touch_reset();
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "Tab5 touch reset failed: %s", esp_err_to_name(ret));
+    return;
+  }
+  touch_driver_init();
 #elif defined(CONFIG_CROWPANEL_EPAPER_42)
   esp_err_t ret = crowpanel_epaper_init();
   if (ret != ESP_OK) {
@@ -2247,7 +2284,7 @@ ESP_LOGI(TAG, "T-Deck trackball ISRs registered");
 #elif defined(CONFIG_USE_TDISPLAY_S3)
   int width = I80_LCD_H_RES;
   int height = I80_LCD_V_RES;
-#elif defined(CONFIG_CROWPANEL_ADVANCED_P4)
+#elif defined(CONFIG_GHOSTESP_P4_HMI)
   int width = CONFIG_TFT_WIDTH;
   int height = CONFIG_TFT_HEIGHT;
 #elif defined(CONFIG_CROWPANEL_EPAPER_42)
@@ -2269,12 +2306,16 @@ ESP_LOGI(TAG, "T-Deck trackball ISRs registered");
   buf2_pixels = 0;
 #elif defined(CONFIG_USE_CARDPUTER) || defined(CONFIG_USE_CARDPUTER_ADV)
   buf1_pixels = (size_t)width * 2;
-#elif defined(CONFIG_CROWPANEL_ADVANCED_P4)
+#elif defined(CONFIG_GHOSTESP_P4_HMI)
   buf1_pixels = (size_t)width * (size_t)height;
   buf2_pixels = buf1_pixels;
+#if defined(CONFIG_CROWPANEL_ADVANCED_P4)
   esp_err_t fb_err = crowpanel_p4_display_get_frame_buffers((void **)&buf1, (void **)&buf2);
+#else
+  esp_err_t fb_err = tab5_display_get_frame_buffers((void **)&buf1, (void **)&buf2);
+#endif
   if (fb_err != ESP_OK) {
-    ESP_LOGE(TAG, "display_manager: failed to get CrowPanel frame buffers: %s",
+    ESP_LOGE(TAG, "display_manager: failed to get P4 panel frame buffers: %s",
              esp_err_to_name(fb_err));
     return;
   }
@@ -2318,7 +2359,7 @@ ESP_LOGI(TAG, "T-Deck trackball ISRs registered");
   size_t buf2_bytes = buf2_pixels * sizeof(*buf2);
 
   if (!buf1) {
-#if defined(CONFIG_CROWPANEL_ADVANCED_P4)
+#if defined(CONFIG_GHOSTESP_P4_HMI)
     return;
 #elif defined(CONFIG_IS_ATOMS3R)
     buf1 = heap_caps_malloc(buf1_bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
@@ -2399,7 +2440,7 @@ ESP_LOGI(TAG, "T-Deck trackball ISRs registered");
   lv_disp_drv_init(&disp_drv);
   disp_drv.hor_res = width;
   disp_drv.ver_res = height;
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
   disp_drv.direct_mode = 1;
 #endif
 #ifdef CONFIG_CROWPANEL_EPAPER_42
@@ -2420,7 +2461,7 @@ ESP_LOGI(TAG, "T-Deck trackball ISRs registered");
   }
 #endif
   lv_disp_t *registered_disp = lv_disp_drv_register(&disp_drv);
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
   if (registered_disp && registered_disp->driver && registered_disp->driver->draw_ctx &&
       registered_disp->driver->draw_ctx->buffer_copy) {
     s_p4_buffer_copy = registered_disp->driver->draw_ctx->buffer_copy;
@@ -2487,6 +2528,9 @@ ESP_LOGI(TAG, "T-Deck trackball ISRs registered");
 #ifdef CONFIG_USE_CARDPUTER
   keyboard_init(&gkeyboard);
   keyboard_begin(&gkeyboard);
+#endif
+#ifdef CONFIG_M5STACK_TAB5_KEYBOARD
+  tab5_keyboard_init();
 #endif
 
 #ifdef CONFIG_HAS_BATTERY
@@ -2588,7 +2632,7 @@ ESP_LOGI(TAG, "T-Deck trackball ISRs registered");
 
 #ifndef CONFIG_JC3248W535EN_LCD
     // LVGL refresh must stay on an internal stack on C5; PSRAM stack can starve the idle WDT.
-#if (defined(CONFIG_CROWPANEL_ADVANCED_P4) || defined(CONFIG_CROWPANEL_ADVANCE_RGB_LCD)) && CONFIG_FREERTOS_NUMBER_OF_CORES > 1
+#if (defined(CONFIG_GHOSTESP_P4_HMI) || defined(CONFIG_CROWPANEL_ADVANCE_RGB_LCD)) && CONFIG_FREERTOS_NUMBER_OF_CORES > 1
     xTaskCreatePinnedToCore(lvgl_tick_task, "LVGL Tick Task", LVGL_TICK_TASK_STACK_SIZE, NULL,
                             RENDERING_TASK_PRIORITY, &lvgl_task_handle, 1);
 #else
@@ -2664,7 +2708,7 @@ static bool s_p4_home_gesture;
 static bool s_p4_back_gesture;
 static lv_point_t s_p4_home_start;
 static lv_point_t s_p4_back_start;
-#if defined(CONFIG_CROWPANEL_ADVANCED_P4)
+#if defined(CONFIG_GHOSTESP_P4_HMI)
 static bool s_p4_skip_next_view_animation;
 #endif
 static bool s_p4_control_center_gesture;
@@ -2971,7 +3015,7 @@ static void dm_p4_control_center_home_cb(lv_event_t *event) {
 }
 
 static void dm_p4_finish_home_route(void) {
-#if defined(CONFIG_CROWPANEL_ADVANCED_P4)
+#if defined(CONFIG_GHOSTESP_P4_HMI)
     s_p4_skip_next_view_animation = true;
 #endif
     gui_route_t home = {.id = GUI_ROUTE_VIEW, .view = &main_menu_view};
@@ -3283,7 +3327,7 @@ static bool dm_p4_control_center_handle_input(const InputEvent *event) {
     return false;
 }
 
-#if defined(CONFIG_CROWPANEL_ADVANCED_P4)
+#if defined(CONFIG_GHOSTESP_P4_HMI)
 static void dm_p4_animate_view_in(lv_obj_t *root) {
     if (!root || settings_get_reduced_motion(&G_Settings)) return;
     if (s_p4_skip_next_view_animation) {
@@ -3446,7 +3490,7 @@ void display_manager_render_view(View *view) {
       lv_obj_set_style_opa(view->root, LV_OPA_COVER, 0);
       if (status_bar) lv_obj_set_style_opa(status_bar, LV_OPA_COVER, 0);
     }
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
     dm_p4_animate_view_in(view->root);
 #endif
 #if GUI_LARGE_TOUCH_UI
@@ -3867,6 +3911,11 @@ static void display_manager_set_backlight_raw(uint8_t percentage) {
     esp_err_t err = crowpanel_p4_display_set_backlight(percentage);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "CrowPanel 5-inch backlight update failed: %s", esp_err_to_name(err));
+    }
+#elif defined(CONFIG_M5STACK_TAB5)
+    esp_err_t err = tab5_display_set_backlight(percentage);
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+        ESP_LOGW(TAG, "Tab5 backlight update failed: %s", esp_err_to_name(err));
     }
 #elif defined(CONFIG_CROWPANEL_ADVANCE_43_LCD)
     /* Factory firmware leaves TCA9534 P1 high and exposes no dimming control. */
@@ -5069,6 +5118,15 @@ void hardware_input_task(void *pvParameters) {
 
 #ifdef CONFIG_JC3248W535EN_LCD
     touch_driver_read_axs15231b(&touch_driver, &touch_data);
+#elif defined(CONFIG_M5STACK_TAB5)
+    /* Tab5 ships either an ILI9881C+GT911 or an ST7123/ST7121 (touch @0x55)
+     * panel; the ST712x touch is read directly, the GT911 via touch_driver. */
+    if (tab5_display_is_st712x()) {
+      tab5_touch_read(&touch_data);
+    } else {
+      touch_driver_read(&touch_driver, &touch_data);
+    }
+    tab5_display_transform_touch(&touch_data);
 #else
     touch_driver_read(&touch_driver, &touch_data);
 #endif
@@ -5406,7 +5464,7 @@ void processEvent() {  // do not process events until the display manager is up
     return;
   }
 
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
   const int max_events = 32;
 #else
   const int max_events = 16;
@@ -5470,6 +5528,7 @@ void processEvent() {  // do not process events until the display manager is up
       xSemaphoreGive(dm.mutex);
 
       ESP_LOGD(TAG, "Input event type: %d, Current view: %s\n", event.type, view_name);
+
       bool accepts_touch_move = touch_move_events_enabled_for_view_name(view_name);
       if (event.type == INPUT_TYPE_TOUCH && event.is_touch_move && !accepts_touch_move) {
         processed++;
@@ -5730,7 +5789,7 @@ bool touch_drag_release(touch_drag_t *d, const lv_indev_data_t *data) {
 }
 
 void lvgl_tick_task(void *arg) {
-#ifdef CONFIG_CROWPANEL_ADVANCED_P4
+#ifdef CONFIG_GHOSTESP_P4_HMI
   const uint32_t max_idle_delay_ms = 5;
 #elif defined(CONFIG_USE_C5_PARLIO_DISPLAY)
   const uint32_t max_idle_delay_ms = 5;
