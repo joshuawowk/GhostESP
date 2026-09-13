@@ -31,7 +31,12 @@
 #include <string.h>
 
 #if defined(CONFIG_IDF_TARGET_ESP32S3) ||                                      \
-    defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C5) || defined(CONFIG_IDF_TARGET_ESP32C6)
+    defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C5) || \
+    defined(CONFIG_IDF_TARGET_ESP32C6) || defined(CONFIG_IDF_TARGET_ESP32P4)
+/* ESP32-P4 (CrowPanel Advanced P4, M5Stack Tab5) also exposes a native
+ * USB-Serial-JTAG console: enable the interactive CLI over it so the device can
+ * be driven over its USB-C port (e.g. the Tab5's c5* JanOS commands), matching
+ * the S3/C3/C5/C6 behavior. */
 #define JTAG_SUPPORTED 1
 #else
 #define JTAG_SUPPORTED 0

@@ -102,28 +102,52 @@ the install is unaffected.)
 
 The Tab5's USB-A port is an ESP32-P4 USB 2.0 **host** port (VBUS enabled by the
 board power init). An external ESP32-C5 running **JanOS** — plugged into USB-A —
-gives 5 GHz coverage without any wiring: the P4 acts as a USB **CDC-ACM host**
-and speaks JanOS's plain-text CLI (`\r\n` lines, 115200 8N1). Enabled by default
-in both Tab5 profiles (`CONFIG_JANOS_USB=y`).
+gives 5 GHz coverage without any wiring: the P4 is the USB host and speaks
+JanOS's plain-text CLI (`\r\n` lines, 115200 8N1) over USB CDC. Enabled by
+default in both Tab5 profiles (`CONFIG_JANOS_USB=y`).
 
-1. Flash JanOS onto the C5 (`~/Repos/JanOS`, ESP-IDF v6.1). Its native USB endpoint
-   must stay a CDC-ACM console — keep `CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y`
-   in the JanOS build (VID `0x303A`, PID `0x1001`). A C5 devkit that reaches USB
-   through a CP2102N/CH343 **bridge** instead of native USB is not CDC-ACM and
-   would need the `usb_host_vcp` driver — use a native-USB C5.
-2. Plug the C5 into the Tab5 USB-A port. GhostESP opens it on hot-plug; the
-   terminal prints `C5 (JanOS) connected on USB-A (115200 8N1)`.
-3. Drive it from the serial CLI / terminal view:
-   - `c5scan` — run a scan and print only the **5 GHz** networks found.
-   - `c5results`, `c5select <idx…>`, `c5deauth`, `c5sniff`, `c5stop`,
-     `c5hosts`, `c5pass [portal|evil]`, `c5ping` — mapped JanOS verbs.
-   - `c5raw <text…>` — send any JanOS command verbatim; its output streams back.
+**Bridge support.** GhostESP drives the C5 whether it reaches USB-A through a
+native USB endpoint or a USB-UART bridge:
+
+- **CH34x** (CH343/CH9102) — enumerates as CDC class 0x02; opened directly.
+- **CP210x** (CP2102N) — vendor-class; GhostESP enables the UART, sets 8N1 /
+  115200, and drives DTR/RTS with Silabs vendor control requests.
+- **Native Espressif USB** (VID `0x303A`) — opened as CDC-ACM.
+
+Bridge DTR/RTS are wired to the C5's EN/IO0 (the esptool auto-reset circuit), so
+on connect GhostESP pulses a **run-mode reset** (DTR low, RTS toggle) to make
+sure the C5 boots JanOS rather than sitting in ROM download mode, then waits for
+JanOS to come up and pings it (`ping` → `pong`) to confirm the link. It logs the
+detected bridge and `C5: JanOS reachable over USB-A -- pong received.`
+
+**Usage:**
+
+1. Flash JanOS onto the C5 (`~/Repos/JanOS/ESP32C5`, ESP-IDF v6.1) and plug it
+   into the Tab5 USB-A port. GhostESP opens it on hot-plug.
+2. Drive it from the serial CLI (over the USB-C port), the on-screen terminal,
+   or the WebUI. `c5` / `c5raw <command…>` passes **any** JanOS command through
+   (all 103 are reachable); `c5help` streams JanOS's own annotated command list.
+   Convenience shortcuts:
+   - **5 GHz Wi-Fi:** `c5scan` (scan, print only 5 GHz rows), `c5scanall`
+     (full dual-band scan), `c5results`, `c5select <idx…>`, `c5deauth`,
+     `c5handshake`, `c5sniff`, `c5karma`, `c5beacon`, `c5stop`.
+   - **Recon / radios / creds:** `c5hosts`, `c5probes`, `c5bt`, `c5airtag`,
+     `c5wardrive`, `c5pass [portal|evil]`.
+   - **Status:** `c5status`, `c5version`, `c5ping`, `c5reboot`.
 
    JanOS indices are 1-based; `c5stop` is the universal cancel. Local 2.4 GHz
-   keeps running on the onboard C6 the whole time.
+   keeps running on the onboard C6 the whole time, so 2.4 GHz (C6) and 5 GHz
+   (C5) run side by side.
 
 This is the recommended 5 GHz add-on (no wiring, keeps Grove Port A free). The
 GhostLink UART path below remains available for a headless GhostESP-on-C5 peer.
+
+> **Validated on hardware:** a CP2102N C5 running **JanOS 1.7.1** connects over
+> USB-A, answers `c5ping` → `pong`, and `c5scan` returns live 5 GHz APs
+> (channels 36/153) that the 2.4 GHz-only onboard C6 cannot see. The P4's
+> USB-Serial-JTAG interactive CLI is enabled, so all `c5*` commands are drivable
+> over the USB-C port. A JanOS build must keep its serial CLI on the UART the
+> bridge is wired to (default 115200 8N1).
 
 ## Adding 5 GHz with an external ESP32-C5 (GhostLink UART)
 

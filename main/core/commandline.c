@@ -471,16 +471,31 @@ void register_commands() {
     register_command("glbench", handle_glbench_cmd);
 #if defined(CONFIG_JANOS_USB)
     // External ESP32-C5 (JanOS) on the Tab5 USB-A host port -- 5 GHz radio peer.
+    // `c5`/`c5raw` pass any JanOS command through; the rest are convenience
+    // shortcuts. `c5help` streams JanOS's full command list.
+    register_command("c5", handle_c5_raw);
+    register_command("c5raw", handle_c5_raw);
+    register_command("c5status", handle_c5_status);
+    register_command("c5help", handle_c5_help);
+    register_command("c5version", handle_c5_version);
+    register_command("c5ping", handle_c5_ping);
     register_command("c5scan", handle_c5_scan);
+    register_command("c5scanall", handle_c5_scanall);
     register_command("c5results", handle_c5_results);
     register_command("c5select", handle_c5_select);
     register_command("c5deauth", handle_c5_deauth);
+    register_command("c5handshake", handle_c5_handshake);
     register_command("c5sniff", handle_c5_sniff);
+    register_command("c5karma", handle_c5_karma);
+    register_command("c5beacon", handle_c5_beacon);
     register_command("c5stop", handle_c5_stop);
     register_command("c5hosts", handle_c5_hosts);
+    register_command("c5probes", handle_c5_probes);
+    register_command("c5bt", handle_c5_bt);
+    register_command("c5airtag", handle_c5_airtag);
+    register_command("c5wardrive", handle_c5_wardrive);
     register_command("c5pass", handle_c5_pass);
-    register_command("c5ping", handle_c5_ping);
-    register_command("c5raw", handle_c5_raw);
+    register_command("c5reboot", handle_c5_reboot);
 #endif
 #if GHOSTESP_OTA_SUPPORTED
     // Only registered on 8MB/16MB boards -- these handlers live in

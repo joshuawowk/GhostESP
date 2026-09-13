@@ -34,7 +34,7 @@
 #define JANOS_RX_LINE_MAX 512
 #define JANOS_COLLECT_MAX 12288
 #define JANOS_TX_MAX 256
-#define JANOS_SCAN_TIMEOUT_MS 20000
+#define JANOS_SCAN_TIMEOUT_MS 30000 /* dual-band scan can take ~15-20s */
 
 static const char *TAG = "janos_usb";
 
