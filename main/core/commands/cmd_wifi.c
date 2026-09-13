@@ -53,6 +53,9 @@ void cmd_wifi_scan_start(int argc, char **argv) {
     } else {
         wifi_manager_start_scan();
     }
+    // Automatic band routing: merge the C5's 5 GHz APs into the 2.4 GHz (C6)
+    // results so `list` shows one dual-band set. No-op without a JanOS C5.
+    wifi_manager_merge_janos_5ghz();
     wifi_manager_print_scan_results_with_oui();
     status_display_show_status("Scan Complete");
 }

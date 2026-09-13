@@ -145,7 +145,11 @@ static Command *command_list_head = NULL;
 static Command *command_pool = NULL;
 static Command *command_free_list = NULL;
 
-#define COMMAND_REGISTRY_MAX 192
+// Sized for the largest board profile. The M5Stack Tab5 registers the base
+// command set plus the P4/Tab5 and c5* (JanOS) commands; keep headroom so no
+// command silently fails to register ("command registry full"). The pool is
+// SPIRAM-backed where available, so the extra entries are cheap.
+#define COMMAND_REGISTRY_MAX 256
 TaskHandle_t VisualizerHandle = NULL;
 TaskHandle_t gps_info_task_handle = NULL;
 

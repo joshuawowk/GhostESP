@@ -140,6 +140,11 @@ void wifi_manager_print_scan_results_with_oui();
 // Function to provide access to the last scan results
 void wifi_manager_get_scan_results_data(uint16_t *count, wifi_ap_record_t **aps);
 
+// Append the external ESP32-C5 (JanOS) 5 GHz scan results to the current AP
+// list (scanned_aps/ap_count), so a single AP scan spans 2.4 GHz (onboard C6)
+// and 5 GHz (C5). No-op when no JanOS C5 is attached; self-enables on hotplug.
+void wifi_manager_merge_janos_5ghz(void);
+
 // Select an access point from the scan results based on index
 void wifi_manager_select_ap(int index);
 

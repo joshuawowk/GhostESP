@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -42,8 +43,20 @@ void janos_usb_manager_set_line_callback(janos_line_cb_t cb, void *user_arg);
 
 /* Run `scan_networks` on the C5, wait for the "Scan results printed" marker,
  * then print only the 5 GHz rows to the terminal. Returns false if not
- * connected or the scan times out. Blocks the caller up to ~20 s. */
+ * connected or the scan times out. Blocks the caller up to ~30 s. */
 bool janos_usb_scan_networks_5ghz(void);
+
+/* Per-AP callback for janos_usb_scan_collect(). All pointers are valid only for
+ * the duration of the call. */
+typedef void (*janos_ap_cb_t)(const char *ssid, const uint8_t bssid[6],
+                              uint8_t channel, int8_t rssi, const char *security,
+                              void *ctx);
+
+/* Run a C5 scan and invoke `cb` for each parsed AP (only the 5 GHz APs when
+ * only_5ghz is true). Returns the number of APs reported, or -1 on error/not
+ * connected. Blocks the caller for the duration of the scan (~15-20 s). Used to
+ * merge the C5's 5 GHz results into GhostESP's own scan list. */
+int janos_usb_scan_collect(janos_ap_cb_t cb, void *ctx, bool only_5ghz);
 
 #ifdef __cplusplus
 }

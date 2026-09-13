@@ -13,6 +13,7 @@
 #include "esp_attr.h"
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 /*
  * JanOS ESP32-C5 over the Tab5 USB-A host port.
@@ -498,14 +499,12 @@ static bool janos_line_band_is_5ghz(const char *line)
     return (n == 4 && strncmp(start + 1, "5GHz", 4) == 0);
 }
 
-bool janos_usb_scan_networks_5ghz(void)
+/* Arm the collector, run `scan_networks`, and wait for the "Scan results
+ * printed" marker. On success the CSV rows are in s_collect_buf (one per line)
+ * and safe to parse without the lock (the RX callback stops touching the buffer
+ * once s_collecting is cleared). */
+static bool janos_run_scan(void)
 {
-    if (!s_connected) {
-        glog("C5: not connected. Attach the JanOS C5 to the Tab5 USB-A port.\n");
-        return false;
-    }
-
-    /* Arm the collector. */
     xSemaphoreTake(s_collect_mutex, portMAX_DELAY);
     s_collect_len = 0;
     s_collect_buf[0] = '\0';
@@ -522,18 +521,28 @@ bool janos_usb_scan_networks_5ghz(void)
         glog("C5: failed to send scan_networks\n");
         return false;
     }
-    glog("C5: scanning all channels (this can take a few seconds)...\n");
 
     bool got = (xSemaphoreTake(s_collect_sem, pdMS_TO_TICKS(JANOS_SCAN_TIMEOUT_MS)) == pdTRUE);
 
-    /* Disarm; after this the RX callback no longer touches s_collect_buf, so it
-     * is safe to parse without holding the lock. */
+    /* Disarm; after this the RX callback no longer touches s_collect_buf. */
     xSemaphoreTake(s_collect_mutex, portMAX_DELAY);
     s_collecting = false;
     xSemaphoreGive(s_collect_mutex);
 
     if (!got) {
         glog("C5: scan timed out after %d s\n", JANOS_SCAN_TIMEOUT_MS / 1000);
+    }
+    return got;
+}
+
+bool janos_usb_scan_networks_5ghz(void)
+{
+    if (!s_connected) {
+        glog("C5: not connected. Attach the JanOS C5 to the Tab5 USB-A port.\n");
+        return false;
+    }
+    glog("C5: scanning all channels (this can take a few seconds)...\n");
+    if (!janos_run_scan()) {
         return false;
     }
 
@@ -550,6 +559,111 @@ bool janos_usb_scan_networks_5ghz(void)
     return true;
 }
 
+/* Extract the idx-th (0-based) double-quoted token from a JanOS CSV row. */
+static bool janos_csv_field(const char *line, int idx, const char **start, size_t *len)
+{
+    const char *p = line;
+    int cur = -1;
+    while (*p) {
+        if (*p == '"') {
+            const char *s = p + 1;
+            const char *e = strchr(s, '"');
+            if (!e) {
+                return false;
+            }
+            if (++cur == idx) {
+                *start = s;
+                *len = (size_t)(e - s);
+                return true;
+            }
+            p = e + 1;
+        } else {
+            p++;
+        }
+    }
+    return false;
+}
+
+static int janos_csv_int(const char *line, int idx, int def)
+{
+    const char *s;
+    size_t n;
+    if (!janos_csv_field(line, idx, &s, &n) || n == 0 || n > 15) {
+        return def;
+    }
+    char tmp[16];
+    memcpy(tmp, s, n);
+    tmp[n] = '\0';
+    return atoi(tmp);
+}
+
+/* Parse "AA:BB:CC:DD:EE:FF" from CSV field idx into 6 bytes. */
+static bool janos_csv_bssid(const char *line, int idx, uint8_t out[6])
+{
+    const char *s;
+    size_t n;
+    if (!janos_csv_field(line, idx, &s, &n) || n < 17) {
+        return false;
+    }
+    unsigned v[6];
+    char tmp[18];
+    memcpy(tmp, s, 17);
+    tmp[17] = '\0';
+    if (sscanf(tmp, "%x:%x:%x:%x:%x:%x", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]) != 6) {
+        return false;
+    }
+    for (int i = 0; i < 6; i++) {
+        out[i] = (uint8_t)v[i];
+    }
+    return true;
+}
+
+int janos_usb_scan_collect(janos_ap_cb_t cb, void *ctx, bool only_5ghz)
+{
+    if (!s_connected || !cb) {
+        return -1;
+    }
+    if (!janos_run_scan()) {
+        return -1;
+    }
+
+    /* JanOS row: "idx","ssid","","bssid","channel","security","rssi","band" */
+    int count = 0;
+    char *save = NULL;
+    for (char *ln = strtok_r(s_collect_buf, "\n", &save); ln; ln = strtok_r(NULL, "\n", &save)) {
+        if (only_5ghz && !janos_line_band_is_5ghz(ln)) {
+            continue;
+        }
+        uint8_t bssid[6];
+        if (!janos_csv_bssid(ln, 3, bssid)) {
+            continue; /* not a data row */
+        }
+        char ssid[33] = {0};
+        const char *ss;
+        size_t sl;
+        if (janos_csv_field(ln, 1, &ss, &sl)) {
+            if (sl > 32) {
+                sl = 32;
+            }
+            memcpy(ssid, ss, sl);
+        }
+        char sec[24] = {0};
+        const char *sc;
+        size_t scl;
+        if (janos_csv_field(ln, 5, &sc, &scl)) {
+            if (scl > 23) {
+                scl = 23;
+            }
+            memcpy(sec, sc, scl);
+        }
+        int channel = janos_csv_int(ln, 4, 0);
+        int rssi = janos_csv_int(ln, 6, -99);
+        cb(ssid, bssid, (uint8_t)channel, (int8_t)rssi, sec, ctx);
+        count++;
+    }
+    return count;
+}
+
 #else /* !CONFIG_JANOS_USB */
 
 void janos_usb_manager_init(void) {}
@@ -557,5 +671,12 @@ bool janos_usb_manager_is_connected(void) { return false; }
 bool janos_usb_manager_send_line(const char *line) { (void)line; return false; }
 void janos_usb_manager_set_line_callback(janos_line_cb_t cb, void *user_arg) { (void)cb; (void)user_arg; }
 bool janos_usb_scan_networks_5ghz(void) { return false; }
+int janos_usb_scan_collect(janos_ap_cb_t cb, void *ctx, bool only_5ghz)
+{
+    (void)cb;
+    (void)ctx;
+    (void)only_5ghz;
+    return -1;
+}
 
 #endif /* CONFIG_JANOS_USB */

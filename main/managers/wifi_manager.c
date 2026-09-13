@@ -1,6 +1,8 @@
 // wifi_manager.c
 
 #include "managers/wifi_manager.h"
+#include "sdkconfig.h"
+#include "managers/janos_usb_manager.h"
 #include "managers/ghostscript_runtime.h"
 #include "scans/wifi/hop_profile.h"
 #include "scans/wifi/port_scan.h"
@@ -2840,6 +2842,76 @@ void wifi_manager_stop_scan() {
         ap_count = 0;
     }
 }
+
+#if defined(CONFIG_JANOS_USB)
+// Automatic band routing: fold the C5's (JanOS) 5 GHz scan results into the
+// onboard C6's 2.4 GHz scan list so one AP list spans both bands. A no-op when
+// no JanOS C5 is attached, so it self-enables on hotplug.
+typedef struct {
+    wifi_ap_record_t *buf;
+    int cap;
+    int n;
+} janos_merge_ctx_t;
+
+static wifi_auth_mode_t janos_sec_to_auth(const char *sec) {
+    if (!sec || !sec[0]) return WIFI_AUTH_OPEN;
+    if (strstr(sec, "WPA3")) return WIFI_AUTH_WPA3_PSK; // also "WPA2/WPA3 Mixed"
+    if (strstr(sec, "WPA2")) return WIFI_AUTH_WPA2_PSK;
+    if (strstr(sec, "WPA"))  return WIFI_AUTH_WPA_PSK;
+    if (strstr(sec, "WEP"))  return WIFI_AUTH_WEP;
+    if (strstr(sec, "Open") || strstr(sec, "OPEN") || strstr(sec, "open")) return WIFI_AUTH_OPEN;
+    return WIFI_AUTH_WPA2_PSK;
+}
+
+static void janos_merge_cb(const char *ssid, const uint8_t bssid[6], uint8_t channel,
+                           int8_t rssi, const char *security, void *ctx) {
+    janos_merge_ctx_t *m = (janos_merge_ctx_t *)ctx;
+    if (m->n >= m->cap) return;
+    wifi_ap_record_t *r = &m->buf[m->n++];
+    memset(r, 0, sizeof(*r));
+    strncpy((char *)r->ssid, ssid, sizeof(r->ssid) - 1);
+    memcpy(r->bssid, bssid, 6);
+    r->primary = channel;
+    r->rssi = rssi;
+    r->authmode = janos_sec_to_auth(security);
+    r->second = WIFI_SECOND_CHAN_NONE;
+}
+
+void wifi_manager_merge_janos_5ghz(void) {
+    if (!janos_usb_manager_is_connected()) return;
+    int room = MAX_SCANNED_APS - (int)ap_count;
+    if (room <= 0) return;
+
+    janos_merge_ctx_t m = {.buf = calloc(room, sizeof(wifi_ap_record_t)), .cap = room, .n = 0};
+    if (!m.buf) return;
+
+    glog("Merging 5 GHz results from the C5 (JanOS)...\n");
+    int got = janos_usb_scan_collect(janos_merge_cb, &m, true /* only 5 GHz */);
+    if (got <= 0 || m.n <= 0) {
+        free(m.buf);
+        if (got == 0) glog("C5: no 5 GHz APs to merge\n");
+        return;
+    }
+
+    int total = (int)ap_count + m.n;
+    wifi_ap_record_t *nb = spiram_calloc(total, sizeof(wifi_ap_record_t));
+    if (!nb) {
+        free(m.buf);
+        return;
+    }
+    if (scanned_aps && ap_count) {
+        memcpy(nb, scanned_aps, (size_t)ap_count * sizeof(wifi_ap_record_t));
+    }
+    memcpy(nb + ap_count, m.buf, (size_t)m.n * sizeof(wifi_ap_record_t));
+    if (scanned_aps) free(scanned_aps);
+    scanned_aps = nb;
+    ap_count = (uint16_t)total;
+    free(m.buf);
+    glog("Merged %d 5 GHz AP(s) from the C5 (total %u APs)\n", m.n, ap_count);
+}
+#else
+void wifi_manager_merge_janos_5ghz(void) {}
+#endif
 
 // List stations - delegated to station_scan module
 void wifi_manager_list_stations() {
