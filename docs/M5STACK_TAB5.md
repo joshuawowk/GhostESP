@@ -139,6 +139,17 @@ detected bridge and `C5: JanOS reachable over USB-A -- pong received.`
    keeps running on the onboard C6 the whole time, so 2.4 GHz (C6) and 5 GHz
    (C5) run side by side.
 
+**Automatic band routing.** When a JanOS C5 is attached, a normal AP scan
+becomes dual-band automatically: `scanap` runs the 2.4 GHz scan on the onboard
+C6 and then folds the C5's 5 GHz results into the same list, so `list` shows one
+set spanning both bands (channels 1-14 from the C6, 36+/149+ from the C5), each
+with OUI vendor lookup. This self-enables on hotplug and is a no-op when no C5
+is attached (`wifi_manager_merge_janos_5ghz()`), so a Tab5 with no C5 behaves
+exactly as before. It applies to the `scanap` command from the serial CLI, the
+on-screen terminal, and the WebUI; the on-screen menu's live AP view remains
+2.4 GHz-only (the C5 speaks a request/response CLI, not a continuous monitor
+stream), but "List APs" shows the merged set after any `scanap`.
+
 This is the recommended 5 GHz add-on (no wiring, keeps Grove Port A free). The
 GhostLink UART path below remains available for a headless GhostESP-on-C5 peer.
 
