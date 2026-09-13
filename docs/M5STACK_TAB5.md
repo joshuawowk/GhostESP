@@ -24,7 +24,9 @@ port of the radio stack.
   (arrows / Enter / Esc-as-back). In landscape the on-screen keyboard is
   suppressed when the physical keyboard is attached.
 - **microSD**, Cloud Store, WebUI, serial CLI, GhostScript — as on other boards.
-- **5 GHz** by attaching an external **ESP32-C5** over GhostLink (see below).
+- **5 GHz** by attaching an external **ESP32-C5**: plug a JanOS C5 into the
+  **USB-A** port (`c5scan`, `c5deauth`, `c5raw …`), or wire a GhostLink UART peer
+  (see below).
 
 ## Hardware map (ESP32-P4 host)
 
@@ -96,7 +98,34 @@ python3 scripts/package_tab5_launcher.py --check local_builds/GhostESP-Tab5-Land
 (SD-menu display names are truncated to 20 characters by the Launcher — cosmetic;
 the install is unaffected.)
 
-## Adding 5 GHz with an external ESP32-C5 (GhostLink)
+## Adding 5 GHz with a USB-A ESP32-C5 running JanOS (`CONFIG_JANOS_USB`)
+
+The Tab5's USB-A port is an ESP32-P4 USB 2.0 **host** port (VBUS enabled by the
+board power init). An external ESP32-C5 running **JanOS** — plugged into USB-A —
+gives 5 GHz coverage without any wiring: the P4 acts as a USB **CDC-ACM host**
+and speaks JanOS's plain-text CLI (`\r\n` lines, 115200 8N1). Enabled by default
+in both Tab5 profiles (`CONFIG_JANOS_USB=y`).
+
+1. Flash JanOS onto the C5 (`~/Repos/JanOS`, ESP-IDF v6.1). Its native USB endpoint
+   must stay a CDC-ACM console — keep `CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y`
+   in the JanOS build (VID `0x303A`, PID `0x1001`). A C5 devkit that reaches USB
+   through a CP2102N/CH343 **bridge** instead of native USB is not CDC-ACM and
+   would need the `usb_host_vcp` driver — use a native-USB C5.
+2. Plug the C5 into the Tab5 USB-A port. GhostESP opens it on hot-plug; the
+   terminal prints `C5 (JanOS) connected on USB-A (115200 8N1)`.
+3. Drive it from the serial CLI / terminal view:
+   - `c5scan` — run a scan and print only the **5 GHz** networks found.
+   - `c5results`, `c5select <idx…>`, `c5deauth`, `c5sniff`, `c5stop`,
+     `c5hosts`, `c5pass [portal|evil]`, `c5ping` — mapped JanOS verbs.
+   - `c5raw <text…>` — send any JanOS command verbatim; its output streams back.
+
+   JanOS indices are 1-based; `c5stop` is the universal cancel. Local 2.4 GHz
+   keeps running on the onboard C6 the whole time.
+
+This is the recommended 5 GHz add-on (no wiring, keeps Grove Port A free). The
+GhostLink UART path below remains available for a headless GhostESP-on-C5 peer.
+
+## Adding 5 GHz with an external ESP32-C5 (GhostLink UART)
 
 The onboard C6 cannot do 5 GHz. To add it, run GhostESP on an external ESP32-C5
 as a GhostLink **radio peer**; the Tab5 stays the display/UI "core" and relays

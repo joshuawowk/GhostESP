@@ -35,6 +35,9 @@
 #ifdef CONFIG_M5STACK_TAB5
 #include "vendor/drivers/tab5_display.h"
 #endif
+#if defined(CONFIG_JANOS_USB)
+#include "managers/janos_usb_manager.h"
+#endif
 #include "vendor/drivers/aw9523.h"
 #include "vendor/drivers/pcf8563.h"
 #include <sys/time.h>
@@ -1004,6 +1007,10 @@ void app_main(void) {
     wardriving_register_stream_handler();
     usb_keyboard_manager_register_stream_handler();
     ghostlink_bench_init();
+#if defined(CONFIG_JANOS_USB)
+    // External ESP32-C5 (JanOS) over the Tab5 USB-A host port (5 GHz peer).
+    MEASURE_INIT_RAM("JanOS USB", janos_usb_manager_init());
+#endif
 #ifdef CONFIG_HAS_BADUSB
     badusb_manager_register_stream_handler();
 #endif

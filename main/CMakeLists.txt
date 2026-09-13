@@ -104,6 +104,13 @@ if(idf_target STREQUAL "esp32p4")
     # Keep these target-gated rather than profile-gated. ESP-IDF may rebuild
     # the component requirements graph without sdkconfig values available.
     list(APPEND required_components esp_wifi esp_hosted esp_wifi_remote esp_lcd_ek79007 esp_lcd_ili9881c esp_lcd_st712x esp_lcd_touch_st7123 esp_lcd_touch_gt911 esp_mm esp_driver_ppa esp_video)
+    # CDC-ACM host for the JanOS ESP32-C5 add-on (Tab5 USB-A). Gated on
+    # idf_target, NOT CONFIG_JANOS_USB: IDF 6 rebuilds the component
+    # requirements graph in a subprocess without sdkconfig, so a
+    # config-gated REQUIRES append never reaches the link graph (see the
+    # esp_hid note below). janos_usb_manager.c compiles to empty stubs when
+    # CONFIG_JANOS_USB is off, so the library links to nothing there.
+    list(APPEND required_components usb_host_cdc_acm)
 endif()
 
 # Optionally add extra include directories

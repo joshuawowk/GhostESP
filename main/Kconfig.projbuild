@@ -308,6 +308,19 @@ menu "Ghost ESP Options"
             J9 connector: SDA GPIO0 / SCL GPIO1) on I2C_NUM_1, independent of the
             system/touch bus on I2C_NUM_0. Keys drive text entry and navigation.
 
+    config JANOS_USB
+        bool "M5Stack Tab5: ESP32-C5 (JanOS) over USB-A host"
+        default n
+        depends on M5STACK_TAB5
+        help
+            Drive an external ESP32-C5 running JanOS firmware, attached to the
+            Tab5's USB-A host port, as a 5 GHz radio peer. The ESP32-P4 acts as a
+            USB CDC-ACM host (espressif/usb_host_cdc_acm) and talks to JanOS over
+            its text CLI (\r\n lines, 115200 8N1). Adds c5* console commands
+            (c5scan, c5sniff, c5deauth, c5raw, ...). The C5's native USB endpoint
+            enumerates as CDC-ACM (VID 0x303A). USB-A VBUS is enabled by the Tab5
+            board power init. Leave off if no C5 add-on is attached.
+
     config GHOSTESP_P4_HMI
         bool
         default y if CROWPANEL_ADVANCED_P4 || M5STACK_TAB5

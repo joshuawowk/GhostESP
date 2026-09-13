@@ -256,6 +256,19 @@ void handle_comm_setpins(int argc, char **argv);
 void handle_glbench_cmd(int argc, char **argv);
 void cmd_comm_register_callback(void);
 
+// JanOS ESP32-C5 (USB-A) commands -- see main/core/commands/cmd_janos.c.
+// Registered only when CONFIG_JANOS_USB is set (M5Stack Tab5).
+void handle_c5_scan(int argc, char **argv);
+void handle_c5_results(int argc, char **argv);
+void handle_c5_select(int argc, char **argv);
+void handle_c5_deauth(int argc, char **argv);
+void handle_c5_sniff(int argc, char **argv);
+void handle_c5_stop(int argc, char **argv);
+void handle_c5_hosts(int argc, char **argv);
+void handle_c5_pass(int argc, char **argv);
+void handle_c5_ping(int argc, char **argv);
+void handle_c5_raw(int argc, char **argv);
+
 // GhostLink peer-flashing commands (see managers/peer_ota_manager.c)
 void handle_otarecv_cmd(int argc, char **argv);
 void handle_otastatus_cmd(int argc, char **argv);

@@ -469,6 +469,19 @@ void register_commands() {
     register_command("commdisconnect", handle_comm_disconnect);
     register_command("commsetpins", handle_comm_setpins);
     register_command("glbench", handle_glbench_cmd);
+#if defined(CONFIG_JANOS_USB)
+    // External ESP32-C5 (JanOS) on the Tab5 USB-A host port -- 5 GHz radio peer.
+    register_command("c5scan", handle_c5_scan);
+    register_command("c5results", handle_c5_results);
+    register_command("c5select", handle_c5_select);
+    register_command("c5deauth", handle_c5_deauth);
+    register_command("c5sniff", handle_c5_sniff);
+    register_command("c5stop", handle_c5_stop);
+    register_command("c5hosts", handle_c5_hosts);
+    register_command("c5pass", handle_c5_pass);
+    register_command("c5ping", handle_c5_ping);
+    register_command("c5raw", handle_c5_raw);
+#endif
 #if GHOSTESP_OTA_SUPPORTED
     // Only registered on 8MB/16MB boards -- these handlers live in
     // peer_ota_manager.c, so registering them unconditionally would pull
