@@ -53,6 +53,7 @@ static SemaphoreHandle_t s_disc_sem = NULL;      /* given on device disconnect *
 
 static janos_line_cb_t s_line_cb = NULL;
 static void *s_line_arg = NULL;
+static volatile bool s_pong_seen = false;
 
 /* RX line assembly (CDC callback context). */
 EXT_RAM_BSS_ATTR static char s_rxline[JANOS_RX_LINE_MAX];
@@ -68,6 +69,10 @@ static char s_collect_marker[48];
 
 static void janos_dispatch_line(const char *line)
 {
+    if (strstr(line, "pong")) {
+        s_pong_seen = true;
+    }
+
     /* Collector path first: if a command armed a collector, capture the line
      * and signal completion when the marker appears. */
     if (s_collect_mutex) {
@@ -163,6 +168,79 @@ static void janos_event_cb(const cdc_acm_host_dev_event_data_t *event, void *use
 
 /* ---- USB host + connect tasks --------------------------------------- */
 
+/* Diagnostic client: logs the VID/PID/class of every device that enumerates on
+ * the USB-A port (via glog, so it is visible regardless of the runtime log
+ * level). This tells us whether the C5 presents as native Espressif USB
+ * (CDC-ACM, VID 0x303A) or as a USB-UART bridge (CH34x/CP210x), which would
+ * need usb_host_vcp instead of cdc_acm_host. */
+static usb_host_client_handle_t s_diag_client = NULL;
+static volatile uint16_t s_detected_vid = 0;
+static volatile uint16_t s_detected_pid = 0;
+
+static void janos_diag_client_cb(const usb_host_client_event_msg_t *msg, void *arg)
+{
+    (void)arg;
+    if (msg->event != USB_HOST_CLIENT_EVENT_NEW_DEV) {
+        return;
+    }
+    uint8_t addr = msg->new_dev.address;
+    usb_device_handle_t dev = NULL;
+    if (usb_host_device_open(s_diag_client, addr, &dev) != ESP_OK) {
+        glog("JanOS USB: device at addr %u could not be opened for probe\n", addr);
+        return;
+    }
+    const usb_device_desc_t *desc = NULL;
+    if (usb_host_get_device_descriptor(dev, &desc) == ESP_OK && desc) {
+        s_detected_vid = desc->idVendor;
+        s_detected_pid = desc->idProduct;
+        glog("USB-A device: addr=%u VID=0x%04X PID=0x%04X class=0x%02X\n",
+             addr, desc->idVendor, desc->idProduct, desc->bDeviceClass);
+        if (desc->idVendor == JANOS_C5_VID) {
+            glog("  -> Espressif native USB (CDC-ACM)\n");
+        } else if (desc->idVendor == 0x1A86) {
+            glog("  -> CH34x USB-UART bridge\n");
+        } else if (desc->idVendor == 0x10C4) {
+            glog("  -> CP210x USB-UART bridge (vendor init)\n");
+        } else if (desc->idVendor == 0x0403) {
+            glog("  -> FTDI USB-UART bridge (not yet supported)\n");
+        }
+    }
+    usb_host_device_close(s_diag_client, dev);
+}
+
+/* CP210x (Silabs) vendor control requests -- the CP2102N is not CDC-ACM, so its
+ * UART must be enabled and configured with vendor transfers before bulk data
+ * flows. See AN571. */
+#define CP210X_REQTYPE_HOST_TO_DEV 0x41
+#define CP210X_CMD_IFC_ENABLE 0x00
+#define CP210X_CMD_SET_LINE_CTL 0x03
+#define CP210X_CMD_SET_MHS 0x07
+#define CP210X_CMD_SET_BAUDRATE 0x1E
+#define CP210X_UART_ENABLE 0x0001
+#define CP210X_LINE_CTL_8N1 0x0800 /* 8 data bits, no parity, 1 stop */
+
+static bool cp210x_init(cdc_acm_dev_hdl_t dev, uint32_t baud)
+{
+    esp_err_t e1 = cdc_acm_host_send_custom_request(
+        dev, CP210X_REQTYPE_HOST_TO_DEV, CP210X_CMD_IFC_ENABLE, CP210X_UART_ENABLE, 0, 0, NULL);
+    esp_err_t e2 = cdc_acm_host_send_custom_request(
+        dev, CP210X_REQTYPE_HOST_TO_DEV, CP210X_CMD_SET_LINE_CTL, CP210X_LINE_CTL_8N1, 0, 0, NULL);
+    uint8_t br[4] = {(uint8_t)(baud), (uint8_t)(baud >> 8), (uint8_t)(baud >> 16), (uint8_t)(baud >> 24)};
+    esp_err_t e3 = cdc_acm_host_send_custom_request(
+        dev, CP210X_REQTYPE_HOST_TO_DEV, CP210X_CMD_SET_BAUDRATE, 0, 0, sizeof(br), br);
+    glog("C5: CP210x init ifc=%s linectl=%s baud=%s\n",
+         esp_err_to_name(e1), esp_err_to_name(e2), esp_err_to_name(e3));
+    return e1 == ESP_OK;
+}
+
+/* CP210x DTR/RTS via SET_MHS: low byte = states (bit0 DTR, bit1 RTS), high byte
+ * = write mask for those bits. */
+static void cp210x_set_mhs(cdc_acm_dev_hdl_t dev, bool dtr, bool rts)
+{
+    uint16_t v = (uint16_t)((dtr ? 0x01 : 0) | (rts ? 0x02 : 0) | 0x0300);
+    cdc_acm_host_send_custom_request(dev, CP210X_REQTYPE_HOST_TO_DEV, CP210X_CMD_SET_MHS, v, 0, 0, NULL);
+}
+
 static void janos_usb_host_task(void *arg)
 {
     (void)arg;
@@ -172,18 +250,35 @@ static void janos_usb_host_task(void *arg)
         .intr_flags = ESP_INTR_FLAG_LOWMED,
     };
     if (usb_host_install(&cfg) != ESP_OK) {
-        ESP_LOGE(TAG, "usb_host_install failed");
+        glog("JanOS USB: usb_host_install failed\n");
         s_host_task = NULL;
         vTaskDelete(NULL);
         return;
     }
+
+    const usb_host_client_config_t ccfg = {
+        .is_synchronous = false,
+        .max_num_event_msg = 5,
+        .async = {
+            .client_event_callback = janos_diag_client_cb,
+            .callback_arg = NULL,
+        },
+    };
+    if (usb_host_client_register(&ccfg, &s_diag_client) != ESP_OK) {
+        s_diag_client = NULL;
+        glog("JanOS USB: diag client register failed (probe logging off)\n");
+    }
+
     s_host_ready = true;
-    ESP_LOGI(TAG, "USB host ready (JanOS)");
+    glog("JanOS USB: host ready, watching USB-A for the C5\n");
     for (;;) {
         uint32_t flags = 0;
-        usb_host_lib_handle_events(portMAX_DELAY, &flags);
+        usb_host_lib_handle_events(pdMS_TO_TICKS(50), &flags);
         if (flags & USB_HOST_LIB_EVENT_FLAGS_NO_CLIENTS) {
             usb_host_device_free_all();
+        }
+        if (s_diag_client) {
+            usb_host_client_handle_events(s_diag_client, 0);
         }
     }
 }
@@ -208,7 +303,12 @@ static void janos_connect_task(void *arg)
     for (;;) {
         if (!s_connected) {
             cdc_acm_dev_hdl_t dev = NULL;
+            /* Try the JanOS native USB IDs first, then any CDC-ACM device (a
+             * JanOS build with a different PID still enumerates as CDC-ACM). */
             esp_err_t err = cdc_acm_host_open(JANOS_C5_VID, JANOS_C5_PID, 0, &dev_cfg, &dev);
+            if (err != ESP_OK || !dev) {
+                err = cdc_acm_host_open(CDC_HOST_ANY_VID, CDC_HOST_ANY_PID, 0, &dev_cfg, &dev);
+            }
             if (err == ESP_OK && dev) {
                 xSemaphoreTake(s_dev_mutex, portMAX_DELAY);
                 s_dev = dev;
@@ -221,13 +321,62 @@ static void janos_connect_task(void *arg)
                     .bParityType = 0, /* none */
                     .bDataBits = 8,
                 };
-                cdc_acm_host_line_coding_set(dev, &coding);
-                /* DTR/RTS: native USB-Serial-JTAG has no auto-reset circuit, so
-                 * asserting these only tells the CLI a terminal is present. */
-                cdc_acm_host_set_control_line_state(dev, true, true);
+                /* Configure the UART. A CP2102N is vendor-class (not CDC), so it
+                 * needs Silabs vendor requests to enable the UART and set baud;
+                 * CH34x (CDC class) and native-USB C5s honour standard CDC
+                 * line coding. */
+                bool is_cp210x = (s_detected_vid == 0x10C4);
+                if (is_cp210x) {
+                    cp210x_init(dev, JANOS_BAUD);
+                    glog("C5 connected on USB-A (CP210x, 115200 8N1)\n");
+                } else {
+                    cdc_acm_host_line_coding_set(dev, &coding);
+                    glog("C5 connected on USB-A (CDC, 115200 8N1)\n");
+                }
 
-                ESP_LOGI(TAG, "C5 (JanOS) connected");
-                glog("C5 (JanOS) connected on USB-A (115200 8N1)\n");
+                /* Bridge-based C5 devkits (CH34x/CP210x) tie the bridge's
+                 * DTR/RTS to the C5's EN/IO0 (the esptool auto-reset circuit).
+                 * Opening the port can leave the C5 held in reset or in ROM
+                 * download mode, so pulse a RUN-mode reset: keep DTR deasserted
+                 * (IO0 high = run) and toggle RTS 0->1->0 (EN low then high).
+                 * Verified on a CH343 C5. Harmless on a native-USB C5. */
+                if (is_cp210x) {
+                    cp210x_set_mhs(dev, false, false);
+                    vTaskDelay(pdMS_TO_TICKS(50));
+                    cp210x_set_mhs(dev, false, true);
+                    vTaskDelay(pdMS_TO_TICKS(150));
+                    cp210x_set_mhs(dev, false, false);
+                } else {
+                    cdc_acm_host_set_control_line_state(dev, false, false);
+                    vTaskDelay(pdMS_TO_TICKS(50));
+                    cdc_acm_host_set_control_line_state(dev, false, true);
+                    vTaskDelay(pdMS_TO_TICKS(150));
+                    cdc_acm_host_set_control_line_state(dev, false, false);
+                }
+
+                /* The reset restarts JanOS, so wait for it to finish booting
+                 * (it probes SD/CC1101/NRF24 for several seconds) before the
+                 * ping self-test, then retry until JanOS answers 'pong'. Its
+                 * console output streams to the terminal via the RX sink. */
+                vTaskDelay(pdMS_TO_TICKS(6000));
+                s_pong_seen = false;
+                bool reached = false;
+                for (int i = 0; i < 5 && s_connected && !reached; i++) {
+                    glog("C5: ping self-test (%d)\n", i + 1);
+                    janos_usb_manager_send_line("ping");
+                    for (int j = 0; j < 24 && !s_pong_seen; j++) {
+                        vTaskDelay(pdMS_TO_TICKS(50));
+                    }
+                    reached = s_pong_seen;
+                    if (!reached) {
+                        vTaskDelay(pdMS_TO_TICKS(700));
+                    }
+                }
+                if (reached) {
+                    glog("C5: JanOS reachable over USB-A -- pong received.\n");
+                } else {
+                    glog("C5: connected but no pong (JanOS booting or not flashed?)\n");
+                }
 
                 /* Block until this device disconnects, then loop to reopen. */
                 xSemaphoreTake(s_disc_sem, portMAX_DELAY);
@@ -293,7 +442,7 @@ void janos_usb_manager_init(void)
         s_connect_task = NULL;
         return;
     }
-    ESP_LOGI(TAG, "JanOS USB manager started (waiting for C5 on USB-A)");
+    glog("JanOS USB manager started (waiting for C5 on USB-A)\n");
 }
 
 bool janos_usb_manager_is_connected(void)
