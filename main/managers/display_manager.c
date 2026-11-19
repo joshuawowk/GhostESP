@@ -3365,6 +3365,8 @@ static void dm_p4_ensure_home_indicator(void) {
 static void dm_p4_back_indicator_set_width(void *obj, int32_t value) {
     if (obj && lv_obj_is_valid((lv_obj_t *)obj)) {
         lv_obj_set_width((lv_obj_t *)obj, value);
+        /* Right-edge indicator: anchor its right side so it grows leftward into the screen. */
+        lv_obj_set_x((lv_obj_t *)obj, LV_HOR_RES - value);
     }
 }
 
@@ -3398,7 +3400,7 @@ static void dm_p4_back_indicator_begin(lv_point_t start) {
     if (!s_p4_back_indicator) return;
     lv_obj_remove_style_all(s_p4_back_indicator);
     lv_obj_set_size(s_p4_back_indicator, 8, 72);
-    lv_obj_set_pos(s_p4_back_indicator, 0, start.y - 36);
+    lv_obj_set_pos(s_p4_back_indicator, LV_HOR_RES - 8, start.y - 36); /* right edge */
     lv_obj_set_style_radius(s_p4_back_indicator, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(s_p4_back_indicator,
                               lv_color_hex(theme_palette_get_accent(
@@ -5138,6 +5140,7 @@ void hardware_input_task(void *pvParameters) {
       last_touch_y = touch_data.point.y;
 #if GUI_LARGE_TOUCH_UI
       system_edge_touch = touch_data.point.x <= 48 ||
+                          touch_data.point.x >= (LV_HOR_RES - 48) ||
                           touch_data.point.y >= (LV_VER_RES - 48);
       /* Large touch panels use the manual touch queue rather than a registered
        * LVGL indev. Claim top-edge pulls here, before per-view move filtering
@@ -5337,7 +5340,7 @@ static bool dm_update_manual_touch_pressed_state(InputEvent *ev) {
         s_p4_back_start = ev->data.touch_data.point;
         /* A generous but still edge-bound activation strip makes the gesture
          * discoverable on a large panel while avoiding ordinary content taps. */
-        s_p4_back_gesture = s_p4_back_start.x <= 48;
+        s_p4_back_gesture = s_p4_back_start.x >= (LV_HOR_RES - 48); /* swipe IN from the right edge */
         if (s_p4_back_gesture) {
             dm_p4_back_indicator_begin(s_p4_back_start);
         }
@@ -5388,7 +5391,7 @@ static bool dm_update_manual_touch_pressed_state(InputEvent *ev) {
         }
         if (s_p4_back_gesture) {
             lv_point_t end = ev->data.touch_data.point;
-            bool swipe_back = (end.x - s_p4_back_start.x) >= 96 &&
+            bool swipe_back = (s_p4_back_start.x - end.x) >= 96 &&
                               abs(end.y - s_p4_back_start.y) <= 96;
             s_p4_back_gesture = false;
             if (swipe_back && !s_lockscreen_overlay_active &&
