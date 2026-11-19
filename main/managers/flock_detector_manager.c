@@ -368,6 +368,15 @@ esp_err_t flock_detector_start(void) {
     s_running = true;
 
     wifi_manager_start_monitor_mode(flock_sniffer_cb);
+    /* flock_sniffer_cb only inspects MGMT + DATA frames (see the type check at the top
+     * of the callback). start_monitor_mode's default mask for an unrecognised callback
+     * is FILTER_MASK_ALL; the extra CTRL-frame flood across the 14-channel hop wedges
+     * the SDIO-hosted C6 radio, after which every RPC times out ~5 s (a multi-second
+     * freeze on exit, and corrupt AP-info responses). Narrow to what we actually use. */
+    wifi_promiscuous_filter_t flock_filter = {
+        .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA
+    };
+    esp_wifi_set_promiscuous_filter(&flock_filter);
     esp_wifi_set_channel(s_channels[0], WIFI_SECOND_CHAN_NONE);
 
     esp_timer_create_args_t targs = { .callback = hop_cb, .name = "flock_hop" };

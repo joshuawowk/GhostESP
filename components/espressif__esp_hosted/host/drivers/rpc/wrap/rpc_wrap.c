@@ -12,6 +12,7 @@
 #include "rpc_wrap.h"
 #include "esp_hosted_rpc.h"
 #include "esp_log.h"
+#include "esp_memory_utils.h"
 #include "port_esp_hosted_host_wifi_config.h"
 #include "port_esp_hosted_host_config.h"
 #include "port_esp_hosted_host_os.h"
@@ -1672,12 +1673,15 @@ int rpc_wifi_sta_get_ap_info(wifi_ap_record_t *ap_info)
 	resp = rpc_slaveif_wifi_sta_get_ap_info(req);
 
 	if (resp && resp->resp_event_status == SUCCESS) {
-		if (!resp->u.wifi_scan_ap_list.out_list) {
-			ESP_LOGE(TAG, "STA AP info response has no AP record");
+		void *out_list = resp->u.wifi_scan_ap_list.out_list;
+		/* A flaky slave link can deliver a SUCCESS response whose out_list pointer is
+		 * non-NULL but garbage (observed 0xb816a398); memcpy()ing from it is a load
+		 * access fault that reboots the device. Reject anything the CPU cannot read. */
+		if (!out_list || !esp_ptr_byte_accessible(out_list)) {
+			ESP_LOGE(TAG, "STA AP info response AP record pointer invalid (%p)", out_list);
 			resp->resp_event_status = ESP_ERR_INVALID_RESPONSE;
 		} else {
-			g_h.funcs->_h_memcpy(ap_info, resp->u.wifi_scan_ap_list.out_list,
-					sizeof(wifi_ap_record_t));
+			g_h.funcs->_h_memcpy(ap_info, out_list, sizeof(wifi_ap_record_t));
 		}
 	}
 	return rpc_rsp_callback(resp);
