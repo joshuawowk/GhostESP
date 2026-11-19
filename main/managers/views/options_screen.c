@@ -28,6 +28,7 @@
 #include "managers/views/ethernet_screen.h"
 #include "managers/wigle_manager.h"
 #include "managers/config_manager.h"
+#include "managers/sentinel_integration.h"
 #include "managers/settings_sd_backup.h"
 #include "managers/ota_manager.h"
 #include "managers/peer_ota_manager.h"
@@ -1934,6 +1935,7 @@ static SettingsItem settings_items[] = {
     {"Export Settings SD", SETTING_EXPORT_SETTINGS_SD, action_options, 1, 0, SETTINGS_CAT_BACKUP_RESET, false, NULL, SETTING_WIDGET_VALUE_CYCLE},
     {"Import Settings SD", SETTING_IMPORT_SETTINGS_SD, action_options, 1, 0, SETTINGS_CAT_BACKUP_RESET, false, NULL, SETTING_WIDGET_VALUE_CYCLE},
     {"Factory Reset", SETTING_FACTORY_RESET, action_options, 1, 0, SETTINGS_CAT_BACKUP_RESET, false, NULL, SETTING_WIDGET_VALUE_CYCLE},
+    {LV_SYMBOL_HOME " Return to Launcher", SETTING_RETURN_TO_LAUNCHER, action_options, 1, 0, SETTINGS_CAT_BACKUP_RESET, false, NULL, SETTING_WIDGET_VALUE_CYCLE},
 #if GHOSTESP_OTA_SUPPORTED
     {"Update Channel", SETTING_OTA_CHANNEL, ota_channel_options, 2, 0, SETTINGS_CAT_FIRMWARE_UPDATE, false, NULL, SETTING_WIDGET_VALUE_CYCLE},
     {"Check Device Update", SETTING_OTA_CHECK_NOW, action_options, 1, 0, SETTINGS_CAT_FIRMWARE_UPDATE, false, NULL, SETTING_WIDGET_VALUE_CYCLE},
@@ -2085,6 +2087,12 @@ static const char *settings_item_value_text(SettingsItem *item) {
 
 static bool settings_item_is_visible(const SettingsItem *item) {
     if (!item) return false;
+    // "Return to Launcher" only makes sense when a launcher chain-loaded us
+    // (running from an OTA slot). Hide it on a directly-flashed GhostESP.
+    if (item->setting_type == SETTING_RETURN_TO_LAUNCHER &&
+        !sentinel_launcher_boot_detected()) {
+        return false;
+    }
 #if GHOSTESP_OTA_SUPPORTED
     if (item->setting_type == SETTING_OTA_INSTALL_FROM_SD && !ota_sd_install_available()) {
         return false;
@@ -2514,6 +2522,7 @@ static bool settings_select_handle_input(InputEvent *event);
 static bool settings_confirm_handle_input(InputEvent *event);
 static void settings_confirm_import_cb(void *user_data);
 static void settings_confirm_factory_reset_cb(void *user_data);
+static void settings_confirm_return_to_launcher_cb(void *user_data);
 
 static lv_timer_t *menu_build_timer = NULL;
 static bool s_back_option_added = false;
@@ -5017,6 +5026,12 @@ static void apply_setting_change(int setting_index, int new_value) {
                                "This erases saved settings and restarts the device.",
                                "Reset", "Cancel", settings_confirm_factory_reset_cb, NULL);
             return;
+        case SETTING_RETURN_TO_LAUNCHER:
+            popup_confirm_show(&settings_confirm_popup, lv_layer_top(),
+                               sentinel_boot_detected() ? "Return to Sentinel?" : "Return to launcher?",
+                               "GhostESP will restart back into the launcher.",
+                               "Return", "Cancel", settings_confirm_return_to_launcher_cb, NULL);
+            return;
         case SETTING_WIGLE_AUTO_UPLOAD:
             settings_set_wigle_auto_upload(&G_Settings, new_value == 1);
             break;
@@ -5757,6 +5772,11 @@ static void settings_confirm_factory_reset_cb(void *user_data) {
     (void)user_data;
     nvs_flash_erase();
     esp_restart();
+}
+
+static void settings_confirm_return_to_launcher_cb(void *user_data) {
+    (void)user_data;
+    sentinel_return_to_launcher(); /* erase otadata + restart; does not return */
 }
 
 static void change_current_row(bool increment)
