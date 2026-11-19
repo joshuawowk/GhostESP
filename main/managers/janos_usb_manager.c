@@ -323,6 +323,20 @@ static void janos_connect_task(void *arg)
                     err = cdc_acm_host_open(CDC_HOST_ANY_VID, CDC_HOST_ANY_PID, 0, &dev_cfg, &dev);
                 }
             }
+            if (err == ESP_OK && dev && !is_cp210x) {
+                /* Opened via the native (0x303A) or ANY-VID filter. A CP2102N
+                 * hot-plugged DURING the ANY-VID open matches ANY but was not
+                 * caught by the 0x10C4 probe, so confirm its VID from the
+                 * diagnostic client (it reads the device descriptor on NEW_DEV).
+                 * Wait briefly for that event to be processed. A native C5
+                 * (0x303A) or a CH34x stays CDC; only a 0x10C4 device flips this. */
+                for (int i = 0; i < 30 && s_detected_vid == 0; ++i) {
+                    vTaskDelay(pdMS_TO_TICKS(10));
+                }
+                if (s_detected_vid == JANOS_CP210X_VID) {
+                    is_cp210x = true;
+                }
+            }
             if (err == ESP_OK && dev) {
                 xSemaphoreTake(s_dev_mutex, portMAX_DELAY);
                 s_dev = dev;
@@ -339,7 +353,8 @@ static void janos_connect_task(void *arg)
                  * needs Silabs vendor requests to enable the UART and set baud;
                  * CH34x (CDC class) and native-USB C5s honour standard CDC line
                  * coding. is_cp210x was determined above from the matching open
-                 * filter, not the diagnostic client's shared VID (which races). */
+                 * filter (0x10C4 probe), falling back to the diagnostic client's
+                 * VID for a device hot-plugged during the ANY-VID open. */
                 s_rxlen = 0; /* drop any partial line left from a previous session */
                 if (is_cp210x) {
                     cp210x_init(dev, JANOS_BAUD);

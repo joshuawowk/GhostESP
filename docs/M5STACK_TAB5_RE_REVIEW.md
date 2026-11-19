@@ -27,6 +27,12 @@ boot, clean display, working touch, SD + Wi-Fi up, and return-to-launcher — se
 | #2 | Sentinel integration: return-to-launcher (menu + `reboot launcher` CLI), single-slot OTA guard, `SENTINEL_APP_INFO` | build (Tab5) + 16-target CI |
 | #3 | Display init robustness (LDO leak, framebuffer-get check, clear-before-backlight, flip-on-success) + keyboard HID-mode retry | build (Tab5) |
 | #4 | Robust JanOS bridge detection (CP2102N vs CDC) + dedup of the 5 GHz merge | build (Tab5); JanOS needs a hardware pass |
+| #6 | C6 never auto-flashed at boot under a launcher (opt-in `c6ota force` only) | build + hardware (boot-guard log observed) |
+| #8 | Scope "unknown C6 → skip" to launcher boots (keep direct-flash provisioning) | build (Tab5) |
+| #9 | `version.txt` → PROJECT_VER 2.1.3 (comparable for Sentinel's Update) | build (Tab5) |
+| #10 | JanOS: also catch a CP2102N hot-plugged during the ANY-VID open | build (Tab5); JanOS needs a hardware pass |
+
+Docs: #5 (this RE review), #7 (hardware-validation section). Published as release **v2.1.3** (both Tab5 images). REA itself was one `inspect_firmware_regions` (binwalk) pass; the rv32 disassembly limitation was reported by the Tab5 Coordinator, not re-verified here. JanOS, the portrait image, and the packet-monitor filter are **build-verified only** (no C5 board / portrait unit / lockup-repro on hardware).
 
 ## Method and evidence
 
@@ -94,10 +100,12 @@ The three traps that broke the sibling M5MonsterC5 port are **already handled** 
 is switched on (`tab5_board_power_init`, expander 0x44 P3) before `usb_host_install`; the CDC
 IN buffer is 512 bytes (a multiple of the 64-byte bulk-IN MPS); and line coding is set to
 115200 8N1 (and the CP2102N vendor path sets its baud/format).
-- **[fixed, PR #4 — needs hardware pass]** CP2102N-vs-CH34x was chosen from a racy global VID
-  written by a separate diagnostic client, not from the just-opened device — a CP2102N opened
-  before that client processed its event took the CDC path, skipped `cp210x_init`, stayed at
-  the wrong baud, and never answered. Now determined by which VID filter opens the device.
+- **[fixed, PR #4 + #10 — needs hardware pass]** CP2102N-vs-CH34x was chosen from a racy global
+  VID written by a separate diagnostic client, not from the just-opened device — a CP2102N
+  opened before that client processed its event took the CDC path, skipped `cp210x_init`,
+  stayed at the wrong baud, and never answered. Now determined by which VID filter opens the
+  device, with a fallback to the diagnostic client's VID for a CP2102N hot-plugged during the
+  ANY-VID open (PR #10 — the VID-filter-only form in #4 missed that ~3 s window).
 - **[recommended]** use-after-free window if the C5 is unplugged between `cdc_acm_host_open`
   and taking `s_dev_mutex`; a disconnect callback that blocks on the mutex while a TX holds it
   (bounded ~1 s stall); serialize `janos_run_scan`.
@@ -156,7 +164,7 @@ guarded GhostESP image was installed and started with `sentinelctl.py`.
 | C6 boot-guard (PR #6) | ✅ no auto-flash at boot; `info` still `c6 unknown` after a GhostESP boot |
 | Return to launcher (PR #2) | ✅ `reboot launcher` CLI → boot log shows `warm+armed/launcher+clean` |
 | Single-slot OTA guard (PR #2) | build-verified; the update item hides under one app slot (no release needed to observe) |
-| `SENTINEL_APP_INFO` (PR #2) | present at image 0x120 (`SNAP`); in-launcher Update active once a release exists |
+| `SENTINEL_APP_INFO` (PR #2) | present at image 0x120 (`SNAP`); release v2.1.3 published. NOT yet observed on a device — and the build currently on the unit predates `version.txt` (bare-hash version), so its Update won't compare until a ≥2.1.3 build is reinstalled |
 
 Hardware findings, not defects in this work:
 - **C6 update succeeds, but the activate RPC is a false negative on this factory C6.** The
@@ -179,8 +187,16 @@ Hardware findings, not defects in this work:
   was attached). The display/touch and SD paths are now hardware-validated.
 - The display warm-reset robustness items above (panel reset pulse, variant-probe retry, touch
   reset, keyboard queue flush) should be done and tested with the panel in hand.
-- A GitHub **release** (with the `GhostESP-Tab5-*.bin` assets) is required before Sentinel's
-  in-launcher Update is active; the `SENTINEL_APP_INFO` descriptor is inert until then.
+- Release **v2.1.3** is published with both `GhostESP-Tab5-*.bin` assets. For Sentinel's
+  in-launcher Update to actually fire, each release must (a) bump `version.txt` so the asset's
+  `PROJECT_VER` matches/leads its tag (otherwise Sentinel re-offers the same version forever),
+  and (b) be installed on a device built with `version.txt` — the build currently on the test
+  unit predates it (bare-hash version), so its Update won't compare until a ≥2.1.3 build is
+  reinstalled. End-to-end Update has not yet been observed on a device.
+- Not yet observed on a device (build-verified + behaviour-reasoned only): the "Return to
+  Launcher" **menu item** on-screen (the `reboot launcher` CLI path IS validated) and the
+  update row being hidden under the single slot. A device turn with the user watching would
+  confirm these (deferred — the st7121-flicker session holds the unit).
 - Pre-existing, unrelated: the repo's `compile_all` CI fails fast on the **Marauder V8** (esp32)
   job with an ESP-IDF `esp_wifi.h` Kconfig-expansion error (`operator '>' has no left operand`),
   which cancels the remaining jobs. 16 targets (incl. esp32/s3/c3/c5/c6 generics) build cleanly
