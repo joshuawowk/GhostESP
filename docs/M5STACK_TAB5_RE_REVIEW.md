@@ -40,9 +40,12 @@ against the Sentinel launcher's documented expectations:
 - **REA** (`inspect_firmware_regions`, binwalk 3.1.0) on the merged image: confirmed the
   embedded WebUI asset (`ghost_site.html`, gzip) and crypto tables; it does not parse the ESP
   partition table, so partition facts come from esptool/the build.
-- **IDF rv32 tooling** (REA's native disassembly providers cannot open ESP32-P4 rv32imafc
-  ELFs): `riscv32-esp-elf-nm` for linked symbols, `esptool image-info` for the app descriptor,
-  and byte reads for the image-format offsets.
+- **IDF rv32 tooling** (REA's native disassembly providers do not open ESP32-P4 rv32imafc
+  ELFs — per the Tab5 Coordinator; not independently re-checked here): `riscv32-esp-elf-nm` for
+  linked symbols, `esptool image-info` for the app descriptor, and byte reads for the
+  image-format offsets.
+- **REA** was used for exactly one pass — a single `inspect_firmware_regions` (binwalk 3.1.0)
+  scan of the merged image (below); it is not a deep decompilation of the rv32 image.
 - **Static source review** of the port's additions (JanOS USB, display/keyboard drivers,
   Wi-Fi band routing, serial/registry) via focused review agents.
 - Cross-referenced against `sentinel-bootloader/docs/{compatibility,firmware-authors,design}.md`.
@@ -109,14 +112,15 @@ keyboard HID-mode write retried 3× (a transient boot NACK used to disable the k
 
 Recommended, **not changed** (display and touch are confirmed working on hardware — see
 "Hardware validation"; these are robustness/cleanup items, not functional defects):
-- The integrated ST712x controller is not reset at boot. On the ST7121 unit tested, the
-  panel-variant probe's `0x55` read fails over a warm reset, so detect falls back to the
-  ILI9881C path; the display still renders (the ILI9881C DSI init is compatible) and touch
-  still works (read directly from `0x55`), but the GT911 touch probe logs harmless I2C errors,
-  and the launcher cannot re-detect the panel after GhostESP runs until a cold power cycle.
-  A boot-time ST712x reset (pulse LCD_RST on expander P4: low ≥10 ms, release, wait ≥120 ms)
-  plus a retry of the `0x55` read would make detection correct and quiet the probe. Best done
-  with the known-good ST7121 reset/init sequence from the launcher-side ST7121 work.
+- On the ST7121 unit tested, detect returns **ST712x** (correct): the display renders cleanly
+  via the ST712x DSI path and touch works, read directly from the `0x55` controller. The GT911
+  I2C errors in the log are **not** a mis-detection — they come from an *unconditional*
+  `touch_driver_init()` (display_manager.c:2239) called for every Tab5 regardless of variant,
+  harmless on a GT911-less unit. Cleanup opportunities (not functional defects): skip that
+  GT911 `touch_driver_init()` on ST712x units to quiet the log, and add a boot-time reset of
+  the integrated ST712x controller (GhostESP currently skips it — `tab5_display_touch_reset`
+  returns early for ST712x), which also helps the launcher re-detect the panel after GhostESP
+  runs (see `panel none` below).
 - Keyboard: the STM32 event queue is not flushed on boot and a modifier-only HID report is
   treated as "all released" — stale events can be replayed / a character duplicated.
 
@@ -151,18 +155,23 @@ guarded GhostESP image was installed and started with `sentinelctl.py`.
 | Wi-Fi / C6 link | ✅ AP "GhostNet" comes up — the esp-hosted C6 link is functional |
 | C6 boot-guard (PR #6) | ✅ no auto-flash at boot; `info` still `c6 unknown` after a GhostESP boot |
 | Return to launcher (PR #2) | ✅ `reboot launcher` CLI → boot log shows `warm+armed/launcher+clean` |
-| Single-slot OTA guard (PR #2) | build-verified (a release is needed to exercise it live) |
+| Single-slot OTA guard (PR #2) | build-verified; the update item hides under one app slot (no release needed to observe) |
 | `SENTINEL_APP_INFO` (PR #2) | present at image 0x120 (`SNAP`); in-launcher Update active once a release exists |
 
 Hardware findings, not defects in this work:
-- **C6 update does not complete over esp-hosted on this unit.** The user approved flashing the
-  C6 to 2.12.16; GhostESP's opt-in `c6ota force` wrote the image but `Req_OTAActivate` timed
-  out, and `info` still reads `c6 unknown`. The C6 is unchanged (not bricked). Its factory
-  firmware does not finish the esp-hosted OTA-activate handshake; a C6 update likely needs a
-  non-esp-hosted method (the device owner's call). Sentinel's own Wi-Fi also needs 2.12.x.
-- **`panel none` in the launcher after GhostESP runs.** GhostESP leaves the integrated ST712x
-  controller in a state the launcher cannot re-detect over a warm reset; a cold power cycle
-  recovers it. Addressed by the boot-time ST712x reset recommended above.
+- **C6 update succeeds, but the activate RPC is a false negative on this factory C6.** The
+  user approved flashing the C6 to 2.12.16; GhostESP's opt-in `c6ota force` wrote the image and
+  `Req_OTAActivate` **timed out** (the C6 reboots into the new image, so the activate response
+  is lost), reported as "activation failed". The image nonetheless **applied after a cold power
+  cycle** — the launcher's `info` then read `c6 2.12.16`. So `c6ota force` works on this unit;
+  just expect the activate timeout and a power cycle to complete it. (`info unknown` before and
+  right after the flash cannot distinguish success from failure — only the post-cold-cycle read
+  does.)
+- **`panel none` in the launcher after GhostESP runs** (observed). GhostESP does not reset the
+  integrated ST712x controller at boot, and after GhostESP ran, Sentinel's `info` read
+  `panel none` (was ST7121); a cold power cycle was performed (which also completed the C6
+  update). Whether the cold cycle alone restores launcher panel detection was not isolated —
+  treat the boot-time ST712x reset above as the robustness fix.
 
 ## Residual unknowns / recommendations
 
