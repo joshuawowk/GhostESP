@@ -109,6 +109,7 @@ static bool s_backlight_ready;
 static bool s_power_ready;
 static int16_t s_last_touch_x;
 static int16_t s_last_touch_y;
+static lv_indev_state_t s_last_touch_state = LV_INDEV_STATE_REL;
 #ifdef CONFIG_M5STACK_TAB5_LANDSCAPE
 static ppa_client_handle_t s_srm;  /* dedicated PPA scale-rotate-mirror client */
 static void *s_panel_fb[2];        /* panel-owned 720x1280 framebuffers (rotate targets) */
@@ -738,20 +739,34 @@ void tab5_touch_read(lv_indev_data_t *data)
 {
     data->point.x = s_last_touch_x;
     data->point.y = s_last_touch_y;
-    data->state = LV_INDEV_STATE_REL;
+    data->state = s_last_touch_state; /* persist by default (held finger / I2C hiccup) */
 
+    /* The ST712x needs this read sequence: ADV_INFO (0x0010) and MAX_TOUCHES
+     * (0x0009) before the report coords (0x0014); reading 0x0014 on its own
+     * returns no data. */
     uint8_t adv = 0;
     if (lvgl_i2c_read(TAB5_I2C_PORT, TAB5_ST712X_TOUCH_ADDR, ST712X_ADV_INFO_REG | I2C_REG_16,
                       &adv, 1) != ESP_OK) {
-        return;
+        return; /* transient read error: keep last state */
     }
-    if (!((adv >> 3) & 0x01)) { /* with_coord bit clear -> no new touch data */
-        return;
-    }
+    bool with_coord = ((adv >> 3) & 0x01) != 0;
+
     uint8_t max_touches = 0;
     if (lvgl_i2c_read(TAB5_I2C_PORT, TAB5_ST712X_TOUCH_ADDR, ST712X_MAX_TOUCHES_REG | I2C_REG_16,
-                      &max_touches, 1) != ESP_OK ||
-        max_touches == 0) {
+                      &max_touches, 1) != ESP_OK) {
+        return; /* keep last state */
+    }
+    if (max_touches == 0) {
+        /* No active touch points -> finger is up. */
+        data->state = LV_INDEV_STATE_REL;
+        s_last_touch_state = LV_INDEV_STATE_REL;
+        return;
+    }
+    if (!with_coord) {
+        /* A touch is present but there is no NEW coordinate (finger held still).
+         * Keep the last point + PRESSED state instead of releasing -- the previous
+         * code released here, so a held finger flickered and a light tap produced
+         * no clean click (you had to press hard to keep generating coordinates). */
         return;
     }
     if (max_touches > ST712X_MAX_REPORTS) {
@@ -760,7 +775,7 @@ void tab5_touch_read(lv_indev_data_t *data)
     uint8_t buf[ST712X_MAX_REPORTS * ST712X_REPORT_SIZE];
     if (lvgl_i2c_read(TAB5_I2C_PORT, TAB5_ST712X_TOUCH_ADDR, ST712X_REPORT_COORD_REG | I2C_REG_16,
                       buf, (uint16_t)(max_touches * ST712X_REPORT_SIZE)) != ESP_OK) {
-        return;
+        return; /* keep last state */
     }
     for (int i = 0; i < max_touches; i++) {
         const uint8_t *r = &buf[i * ST712X_REPORT_SIZE];
@@ -776,8 +791,12 @@ void tab5_touch_read(lv_indev_data_t *data)
         data->point.x = (int16_t)x;
         data->point.y = (int16_t)y;
         data->state = LV_INDEV_STATE_PR;
+        s_last_touch_state = LV_INDEV_STATE_PR;
         return;
     }
+    /* with_coord set but no valid report -> release */
+    data->state = LV_INDEV_STATE_REL;
+    s_last_touch_state = LV_INDEV_STATE_REL;
 }
 
 esp_err_t tab5_display_set_backlight(uint8_t percentage)
