@@ -88,9 +88,16 @@ Tab5 image carries a fixed `sentinel_app_info` descriptor (`SNAP` magic at image
 
 It is defined in `main/managers/sentinel_integration.c` under `CONFIG_M5STACK_TAB5`, kept in
 the image by `-u sentinel_app_info` in `main/CMakeLists.txt` (same guard), and vendored from
-the Sentinel SDK as [`include/sentinel_app.h`](../include/sentinel_app.h). The descriptor is
-inert until a GitHub **release** exists on that repository whose tag is a newer version than
-the build's `PROJECT_VER` and that carries the named asset. Verify it is in a build with:
+the Sentinel SDK as [`include/sentinel_app.h`](../include/sentinel_app.h). Sentinel offers an
+update when a GitHub **release** on that repository has a tag that is a newer version than the
+build's `PROJECT_VER` (set from [`version.txt`](../version.txt)) and carries the named asset.
+
+**Releasing:** bump `version.txt` for every release *before* building, and tag the release to
+match (e.g. `version.txt` = `2.1.4`, tag `v2.1.4`). If the asset's `PROJECT_VER` lags its tag,
+Sentinel re-offers the same version forever; if it leads, the release is never offered. Release
+**v2.1.3** (both Tab5 images) is published. A device must be running a build made with
+`version.txt` for its version to compare — a bare-`git describe` hash does not. Verify the
+descriptor is in a build with:
 
 ```bash
 python3 -c "import struct,sys; d=open(sys.argv[1],'rb').read(); \
