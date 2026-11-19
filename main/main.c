@@ -30,6 +30,7 @@
 #if defined(CONFIG_IDF_TARGET_ESP32P4)
 #include "esp_hosted.h"
 #include "managers/p4_slave_ota_manager.h"
+#include "managers/sentinel_integration.h"
 #include "managers/ghost_raw_radio.h"
 #endif
 #ifdef CONFIG_M5STACK_TAB5
@@ -804,7 +805,20 @@ void app_main(void) {
         } else {
             ESP_LOGI(TAG, "ESP-Hosted C6 Bluetooth controller enabled");
         }
-        p4_slave_ota_result_t ota_result = p4_slave_ota_update(false);
+        /* Do not auto-replace the shared C6 firmware when a launcher chain-loaded
+         * us (Sentinel/bmorcelli): every firmware on the device shares one C6, so
+         * replacing it without asking is forbidden (sentinel firmware-authors.md,
+         * "Do not replace the C6 firmware without asking"). Compare-and-log only;
+         * the user flashes explicitly with the `c6ota force` console command. On a
+         * directly-flashed GhostESP we own the device, so keep the auto-update
+         * (which now flashes only on a *confirmed* version mismatch). */
+        p4_slave_ota_result_t ota_result = P4_SLAVE_OTA_SKIPPED;
+        if (sentinel_launcher_boot_detected()) {
+            ESP_LOGI(TAG, "Launcher boot: not auto-updating the shared C6 "
+                          "(use 'c6ota force' to flash the bundled image)");
+        } else {
+            ota_result = p4_slave_ota_update(false);
+        }
         if (ota_result == P4_SLAVE_OTA_UPDATED) {
             ESP_LOGI(TAG, "C6 update complete; rebooting P4");
             vTaskDelay(pdMS_TO_TICKS(1000));

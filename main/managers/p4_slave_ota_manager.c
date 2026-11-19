@@ -118,10 +118,21 @@ p4_slave_ota_result_t p4_slave_ota_update(bool force)
 
     esp_hosted_coprocessor_fwver_t current = {0};
     esp_err_t err = esp_hosted_get_coprocessor_fwversion(&current);
-    if (!force && err == ESP_OK && versions_match(&current, image_version)) {
-        ESP_LOGI(TAG, "C6 firmware already matches; skipping OTA");
-        result = P4_SLAVE_OTA_SKIPPED;
-        goto done;
+    if (!force) {
+        if (err != ESP_OK) {
+            /* Unknown current version (C6 link not up yet, RPC error, slow C6
+             * boot) must mean "do nothing" -- never replace the shared C6 on
+             * uncertainty. Flash explicitly with `c6ota force` if needed. */
+            ESP_LOGW(TAG, "C6 version query failed (%s); not flashing automatically",
+                     esp_err_to_name(err));
+            result = P4_SLAVE_OTA_SKIPPED;
+            goto done;
+        }
+        if (versions_match(&current, image_version)) {
+            ESP_LOGI(TAG, "C6 firmware already matches; skipping OTA");
+            result = P4_SLAVE_OTA_SKIPPED;
+            goto done;
+        }
     }
 
     if (esp_hosted_slave_ota_begin() != ESP_OK) {
