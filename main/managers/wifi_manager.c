@@ -2353,11 +2353,20 @@ void wifi_manager_start_monitor_mode(wifi_promiscuous_cb_t_t callback) {
     wifi_promiscuous_filter_t filter = {0};
     
     // Determine filter mask based on callback function
-    if (callback == wifi_beacon_scan_callback || callback == wifi_probe_scan_callback || 
+    if (callback == wifi_beacon_scan_callback || callback == wifi_probe_scan_callback ||
         callback == wifi_deauth_scan_callback || callback == wifi_pwn_scan_callback ||
         callback == wifi_wps_detection_callback || callback == wifi_listen_probes_callback ||
-        callback == wifi_pineap_detector_callback || callback == wardriving_scan_callback) {
-        // Management frames only
+        callback == wifi_pineap_detector_callback || callback == wardriving_scan_callback ||
+        callback == wifi_airspace_monitor_callback) {
+        // Management frames only.
+        // Airspace's entire threat engine (deauth/disassoc floods, evil-twin,
+        // karma, beacon-flood, auth-flood) reads only management frames; data
+        // and control frames were counted solely for the informational "Frame
+        // Mix" display. On the Tab5/P4 the C6 radio is remote over SDIO
+        // (ESP-Hosted) and esp_wifi_set_channel() is an RPC, so capturing ALL
+        // frames saturates the SDIO link, starves the RPC channel, and makes
+        // Req_WifiSetChannel time out (~5s) — wedging the channel hopper and UI
+        // until the device has to be reset. Mgmt-only keeps the SDIO link clear.
         filter.filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT;
     } else if (callback == wifi_eapol_scan_callback) {
         // capture mgmt, data, and ctrl for full handshake context
