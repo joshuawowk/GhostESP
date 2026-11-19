@@ -204,6 +204,9 @@ typedef enum {
     SETTING_DEVICE_NRF24,
     SETTING_DEVICE_SD,
     SETTING_DEVICE_RGB,
+  // Return to the launcher (Sentinel/bmorcelli) by erasing otadata + restart.
+  // Not NVS-backed; visible only when chain-loaded by a launcher.
+  SETTING_RETURN_TO_LAUNCHER,
 } SettingsType;
 
 /* 16 slots x 64B names. The NVS blob is [count][FAVORITES_MAX x 64]; older

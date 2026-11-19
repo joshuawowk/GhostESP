@@ -345,6 +345,14 @@ if(idf_target STREQUAL "esp32p4")
     set_property(TARGET flash PROPERTY SUB_ARGS "${crowpanel_flash_args}")
 endif()
 
+# Keep the Sentinel app-info descriptor (main/managers/sentinel_integration.c)
+# in the Tab5 image. Nothing in the firmware references sentinel_app_info, so the
+# linker would otherwise garbage-collect its .rodata_custom_desc section; the
+# Sentinel launcher reads it straight out of flash to offer updates.
+if(CONFIG_M5STACK_TAB5)
+    target_link_libraries(${COMPONENT_LIB} INTERFACE "-u sentinel_app_info")
+endif()
+
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-incompatible-pointer-types -Wno-unused-local-typedefs)
 
 # Disabled for v2.1.2 - Banshee C5 OTA removed

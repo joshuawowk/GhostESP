@@ -20,6 +20,7 @@
 #include "managers/plugin_loader.h"
 #include "managers/rgb_manager.h"
 #include "managers/sd_card_manager.h"
+#include "managers/sentinel_integration.h"
 #include "managers/settings_manager.h"
 #include "managers/subghz_remote_manager.h"
 #include "managers/nrf24_remote_manager.h"
@@ -141,6 +142,20 @@ void handle_fav_cmd(int argc, char **argv) {
 }
 
 void handle_reboot(int argc, char **argv) {
+    /* "reboot launcher" (alias "reboot sentinel"): return to the launcher by
+     * erasing otadata and restarting. Only meaningful when chain-loaded by a
+     * launcher; on a direct flash this is a no-op hint. Lets a headless console
+     * trigger the same return path as the on-screen "Return to Launcher" item. */
+    if (argc >= 2 && (strcasecmp(argv[1], "launcher") == 0 ||
+                      strcasecmp(argv[1], "sentinel") == 0)) {
+        if (!sentinel_launcher_boot_detected()) {
+            glog("Not running under a launcher (booted from factory); use plain 'reboot'.\n");
+            return;
+        }
+        glog("Returning to %s...\n", sentinel_boot_detected() ? "Sentinel" : "launcher");
+        sentinel_return_to_launcher(); /* does not return */
+        return;
+    }
     glog("Rebooting system...\n");
     esp_restart();
 }

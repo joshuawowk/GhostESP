@@ -291,7 +291,14 @@ bool ota_manager_is_supported(void) {
         return false;
     }
 #endif
-    return esp_ota_get_next_update_partition(NULL) != NULL;
+    /* A usable second slot is required. Under the Sentinel launcher the running
+     * view has a single app slot (ota_0), so esp_ota_get_next_update_partition()
+     * returns the running partition; an update there would only fail with
+     * ESP_ERR_OTA_PARTITION_CONFLICT. Report unsupported so the UI/CLI hide the
+     * update cleanly instead of offering one that always errors.
+     * (sentinel-bootloader/docs/firmware-authors.md, "Self-OTA fails cleanly".) */
+    const esp_partition_t *next = esp_ota_get_next_update_partition(NULL);
+    return next != NULL && next != esp_ota_get_running_partition();
 #else
     return false;
 #endif
