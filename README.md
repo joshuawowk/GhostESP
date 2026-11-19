@@ -3,7 +3,7 @@
 > **The ESP-IDF-native wireless security platform for ESP32.**
 > Deep Wi-Fi and BLE assessment, research-grade capture and export, and a real app ecosystem. Built directly on Espressif's ESP-IDF rather than through the Arduino core, so new silicon and radio features land first and there is no abstraction layer between GhostESP and the hardware.
 
-[![Version](https://img.shields.io/badge/version-2.1.3-7c5cff?style=flat-square)](https://github.com/GhostESP-Revival/GhostESP)
+[![Version](https://img.shields.io/badge/version-2.1.4-7c5cff?style=flat-square)](https://github.com/GhostESP-Revival/GhostESP)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square)](LICENSE)
 [![ESP-IDF](https://img.shields.io/badge/ESP--IDF-v6.1-orange?style=flat-square)](https://docs.espressif.com/projects/esp-idf/)
 [![Discord](https://img.shields.io/discord/5cyNmUMgwh?style=flat-square&label=Discord&color=5865F2)](https://discord.gg/5cyNmUMgwh)
