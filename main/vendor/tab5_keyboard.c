@@ -224,8 +224,19 @@ void tab5_keyboard_init(void)
     }
 
     /* Probe + put the keyboard into HID event-queue mode. If it is absent the
-     * write fails and we skip starting the poll task (keyboard is optional). */
-    if (kb_write(TAB5_KB_REG_MODE, TAB5_KB_MODE_HID) != ESP_OK) {
+     * write fails and we skip starting the poll task (keyboard is optional).
+     * Retry a few times: a transient I2C NACK during boot (e.g. just after a
+     * warm reset, when the STM32 is still settling) would otherwise mark the
+     * keyboard permanently absent until the next reboot. */
+    esp_err_t kb_mode_err = ESP_FAIL;
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        kb_mode_err = kb_write(TAB5_KB_REG_MODE, TAB5_KB_MODE_HID);
+        if (kb_mode_err == ESP_OK) {
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+    if (kb_mode_err != ESP_OK) {
         ESP_LOGI(TAG, "No Tab5 keyboard detected at 0x%02X (optional)", TAB5_KB_ADDR);
         return;
     }

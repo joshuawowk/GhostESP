@@ -13,6 +13,7 @@
 #include "esp_lcd_st7123.h"
 #include "esp_ldo_regulator.h"
 #include "esp_log.h"
+#include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -504,7 +505,7 @@ esp_err_t tab5_display_init(void)
     err = esp_lcd_new_dsi_bus(&bus_config, &s_dsi_bus);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "failed to create DSI bus: %s", esp_err_to_name(err));
-        return err;
+        goto fail;
     }
 
     const esp_lcd_dbi_io_config_t dbi_config = {
@@ -643,7 +644,17 @@ esp_err_t tab5_display_init(void)
 #ifdef CONFIG_M5STACK_TAB5_LANDSCAPE
     /* Cache the panel-owned framebuffers as PPA rotate targets and bring up the
      * SRM client (LVGL renders into separate 1280x720 landscape buffers). */
-    esp_lcd_dpi_panel_get_frame_buffer(s_panel, 2, &s_panel_fb[0], &s_panel_fb[1]);
+    err = esp_lcd_dpi_panel_get_frame_buffer(s_panel, 2, &s_panel_fb[0], &s_panel_fb[1]);
+    if (err != ESP_OK || !s_panel_fb[0] || !s_panel_fb[1]) {
+        ESP_LOGE(TAG, "failed to get panel framebuffers: %s", esp_err_to_name(err));
+        if (err == ESP_OK) err = ESP_ERR_INVALID_STATE;
+        goto fail;
+    }
+    /* Clear the panel framebuffers before the backlight turns on, so the previous
+     * firmware's leftover PSRAM contents are not briefly shown at boot (PSRAM is
+     * not cleared by Sentinel's warm digital-system reset). */
+    memset(s_panel_fb[0], 0, (size_t)TAB5_H_RES * TAB5_V_RES * 2);
+    memset(s_panel_fb[1], 0, (size_t)TAB5_H_RES * TAB5_V_RES * 2);
     tab5_srm_ensure();
 #endif
 
@@ -673,6 +684,10 @@ fail:
     if (s_dsi_bus) {
         esp_lcd_del_dsi_bus(s_dsi_bus);
         s_dsi_bus = NULL;
+    }
+    if (s_ldo_mipi) {
+        esp_ldo_release_channel(s_ldo_mipi);
+        s_ldo_mipi = NULL;
     }
     return err;
 }
@@ -858,7 +873,12 @@ void tab5_display_flush_cb(lv_disp_drv_t *drv,
     esp_err_t err = tab5_rotate_present(color_p, dst);
     if (err == ESP_OK) {
         err = esp_lcd_panel_draw_bitmap(s_panel, 0, 0, TAB5_H_RES, TAB5_V_RES, dst);
-        s_panel_back ^= 1;
+        /* Only advance the back-buffer index when the present actually succeeded;
+         * flipping on a failed draw desyncs the index from the buffer on screen
+         * and makes PPA rotate into the buffer being scanned out (tearing). */
+        if (err == ESP_OK) {
+            s_panel_back ^= 1;
+        }
     }
     if (err == ESP_OK && s_refresh_done) {
         xSemaphoreTake(s_refresh_done, 0);
