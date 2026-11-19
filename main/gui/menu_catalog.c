@@ -1,5 +1,6 @@
 #include "gui/menu_catalog.h"
 #include "managers/settings_manager.h"
+#include "managers/sentinel_integration.h"
 #include "core/esp_comm_manager.h"
 #include "gui/toast.h"
 #include "managers/haptic_manager.h"
@@ -124,6 +125,10 @@ static const menu_catalog_item_t builtin_items[] = {
     ITEM("apps", "Apps", "GESPAppGallery", GESPAppGallery, apps_menu_view, 0, MENU_PLACE_MAIN),
     ITEM("lock", "Lock", "lock", lock, lockscreen_view, 0, MENU_PLACE_MAIN),
     ITEM("settings", "Settings", "settings_icon", settings_icon, options_menu_view, OT_Settings, MENU_PLACE_MAIN),
+    /* Shown only when a launcher chain-loaded us (see menu_catalog_available); the
+     * action is special-cased in menu_catalog_launch (erase otadata + restart),
+     * so the view here is never actually opened. */
+    ITEM("return_sentinel", "Return to Sentinel", "lock", lock, options_menu_view, 0, MENU_PLACE_MAIN),
     ITEM("visualizer", "Visualizer", "rave", rave, music_visualizer_view, 0, MENU_PLACE_APPS),
 #ifdef CONFIG_HAS_AUDIO_PLAYER
     ITEM("audio", "Audio", "speaker_50dp_FFFFFF_FILL0_wght400_GRAD0_opsz48", speaker_50dp_FFFFFF_FILL0_wght400_GRAD0_opsz48, audio_player_view, 0, MENU_PLACE_APPS),
@@ -179,6 +184,7 @@ bool menu_catalog_get(int index, menu_catalog_item_t *item) {
 bool menu_catalog_available(const menu_catalog_item_t *item, bool connected) {
     if (!item) return false;
     if (strcmp(item->id, "ghostlink") == 0) return connected;
+  if (strcmp(item->id, "return_sentinel") == 0) return sentinel_launcher_boot_detected();
     if (strcmp(item->id, "lock") == 0) return settings_get_lockscreen_enabled(&G_Settings);
     if (strcmp(item->id, "ethernet") == 0) {
 #ifdef CONFIG_WITH_ETHERNET
@@ -248,6 +254,12 @@ void menu_catalog_launch(const char *id, View *return_view) {
     }
     if (!found || !menu_catalog_available(&item, esp_comm_manager_is_connected())) {
         toast_show("Item unavailable", TOAST_WARN);
+        return;
+    }
+    if (strcmp(item.id, "return_sentinel") == 0) {
+        status_display_show_status(item.name);
+        haptic_manager_play(HAPTIC_EFFECT_SELECTION);
+        sentinel_return_to_launcher(); /* erase otadata + restart; does not return */
         return;
     }
     if (strncmp(item.id, "plugin:", 7) == 0) {
