@@ -2,6 +2,7 @@
 
 #if defined(CONFIG_IDF_TARGET_ESP32P4)
 
+#include "managers/sentinel_integration.h"
 #include "esp_app_format.h"
 #include "esp_app_desc.h"
 #include "esp_hosted.h"
@@ -120,15 +121,22 @@ p4_slave_ota_result_t p4_slave_ota_update(bool force)
     esp_err_t err = esp_hosted_get_coprocessor_fwversion(&current);
     if (!force) {
         if (err != ESP_OK) {
-            /* Unknown current version (C6 link not up yet, RPC error, slow C6
-             * boot) must mean "do nothing" -- never replace the shared C6 on
-             * uncertainty. Flash explicitly with `c6ota force` if needed. */
-            ESP_LOGW(TAG, "C6 version query failed (%s); not flashing automatically",
+            if (sentinel_launcher_boot_detected()) {
+                /* Under a launcher the C6 is shared with every firmware, so an
+                 * unknown current version (link not up yet, RPC error, slow C6
+                 * boot) must mean "do nothing" -- never replace it on
+                 * uncertainty. Use `c6ota force` to flash explicitly. */
+                ESP_LOGW(TAG, "C6 version query failed (%s); not flashing under a launcher",
+                         esp_err_to_name(err));
+                result = P4_SLAVE_OTA_SKIPPED;
+                goto done;
+            }
+            /* Directly flashed: we own the whole device, so a failed query falls
+             * through to flashing -- this provisions a blank/new C6 on first boot,
+             * which is the original (CrowPanel/Banshee) behaviour. */
+            ESP_LOGW(TAG, "C6 version query failed (%s); provisioning C6 (direct flash)",
                      esp_err_to_name(err));
-            result = P4_SLAVE_OTA_SKIPPED;
-            goto done;
-        }
-        if (versions_match(&current, image_version)) {
+        } else if (versions_match(&current, image_version)) {
             ESP_LOGI(TAG, "C6 firmware already matches; skipping OTA");
             result = P4_SLAVE_OTA_SKIPPED;
             goto done;

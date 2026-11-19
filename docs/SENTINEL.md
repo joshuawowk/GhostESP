@@ -98,15 +98,22 @@ print(struct.unpack_from('<IHH', d, 0x120))" build/Ghost_ESP_IDF.bin
 # -> (1346457171, 1, 256)   # 1346457171 == 0x50414E53 'SNAP'
 ```
 
-## The ESP32-C6 radio — do not replace it without asking
+## The ESP32-C6 radio — never auto-replaced under a launcher
 
-Every firmware on the Tab5 shares the one esp-hosted slave firmware on the C6. GhostESP
-bundles ESP-Hosted-MCU **2.12.16** in `slave_fw` and, via `p4_slave_ota_manager`, compares it
-to the running C6 firmware and flashes **only on a mismatch** (logging `C6 firmware already
-matches; skipping OTA` otherwise). On a brand-new Tab5 the C6 may ship a different slave
-version; the `c6ota force` path and `slave_fw` auto-flash must not be run without the owner's
-explicit confirmation, because replacing the C6 firmware affects every other firmware on the
-device.
+Every firmware on the Tab5 shares the one esp-hosted slave firmware on the C6, so replacing it
+without asking breaks the others. GhostESP bundles ESP-Hosted-MCU **2.12.16** in `slave_fw`.
+Under a launcher (running from an OTA slot) GhostESP **does not** touch the C6 at boot — it
+logs `Launcher boot: not auto-updating the shared C6` and leaves it alone; an unknown current
+version is also treated as "do nothing". The C6 is updated only on the explicit opt-in
+`c6ota force` console command. (On a directly-flashed GhostESP, which owns the whole device,
+the boot-time auto-update is kept, and now flashes only on a *confirmed* version mismatch or a
+failed query — provisioning a blank C6.)
+
+Observed on the ST7121 test unit (factory C6, version `unknown` to the host): `c6ota force`
+wrote the 2.12.16 image, `Req_OTAActivate` **timed out** (the C6 reboots into the new image
+and the activate RPC response is lost), and the image **applied after a cold power cycle** —
+the launcher's `info` then read `c6 2.12.16`. So on this C6 the activate RPC is a false
+negative; the write succeeds and a power cycle completes it.
 
 ## Configuration facts verified against Sentinel's traps
 
