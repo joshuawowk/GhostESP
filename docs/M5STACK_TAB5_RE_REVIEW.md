@@ -14,7 +14,10 @@ configuration — are done correctly, and several traps that bit sibling Tab5 po
 avoided here. The review found **no crash or memory-safety defect in the shipped image**. It
 did find a handful of latent correctness bugs and robustness gaps, plus the Sentinel-launcher
 integration that was missing; the safe, high-value ones are fixed on this branch and the rest
-are recorded below with a recommended fix and whether they need on-hardware testing.
+are recorded below with a recommended fix and whether they need on-hardware testing. The
+Sentinel integration was validated end-to-end on a brand-new Tab5 — install under Sentinel,
+boot, clean display, working touch, SD + Wi-Fi up, and return-to-launcher — see
+[Hardware validation](#hardware-validation-new-tab5-sentinel-v016).
 
 ## Changes landed (PRs into `tab5-port`)
 
@@ -104,12 +107,18 @@ leak on init-error paths; unchecked `esp_lcd_dpi_panel_get_frame_buffer()`; fram
 cleared before the backlight turns on; back-buffer index advanced only on a successful present;
 keyboard HID-mode write retried 3× (a transient boot NACK used to disable the keyboard).
 
-Recommended, **needs hardware** (not changed, to avoid destabilizing a working panel):
-- LCD_RST is never pulsed (relies on the DCS soft reset); after a warm digital-system reset the
-  panel keeps the launcher's state. Add a real reset pulse (low ≥10 ms, release, wait ≥120 ms).
-- Panel-variant probe guesses ILI9881C on a single failed I2C read → retry before defaulting.
-- ST7123 touch controller and the STM32 keyboard's event queue are not reset/flushed on boot
-  → stale events can be replayed; modifier-only HID reports are treated as "all released".
+Recommended, **not changed** (display and touch are confirmed working on hardware — see
+"Hardware validation"; these are robustness/cleanup items, not functional defects):
+- The integrated ST712x controller is not reset at boot. On the ST7121 unit tested, the
+  panel-variant probe's `0x55` read fails over a warm reset, so detect falls back to the
+  ILI9881C path; the display still renders (the ILI9881C DSI init is compatible) and touch
+  still works (read directly from `0x55`), but the GT911 touch probe logs harmless I2C errors,
+  and the launcher cannot re-detect the panel after GhostESP runs until a cold power cycle.
+  A boot-time ST712x reset (pulse LCD_RST on expander P4: low ≥10 ms, release, wait ≥120 ms)
+  plus a retry of the `0x55` read would make detection correct and quiet the probe. Best done
+  with the known-good ST7121 reset/init sequence from the launcher-side ST7121 work.
+- Keyboard: the STM32 event queue is not flushed on boot and a modifier-only HID report is
+  treated as "all released" — stale events can be replayed / a character duplicated.
 
 ### Wi-Fi 5 GHz merge / serial / registry
 - **[fixed, PR #4]** `janos_merge_cb` now dedups by BSSID; the merge previously appended the
@@ -125,9 +134,40 @@ Recommended, **needs hardware** (not changed, to avoid destabilizing a working p
   yet tested on CrowPanel hardware.
 - Command registry raised to 256 is adequate (~228 register sites, bounds-checked, no overflow).
 
+## Hardware validation (new Tab5, Sentinel v0.1.6)
+
+Validated on a brand-new M5Stack Tab5 (MAC `E8:F6:0A:E2:FC:56`, ESP32-P4 **rev v1.3**, 16 MB,
+**ST7121** integrated display-touch panel). A full factory backup was read and verified first;
+Sentinel Bootloader v0.1.6 (signed release, SHA-256 checked) was factory-installed, then the
+guarded GhostESP image was installed and started with `sentinelctl.py`.
+
+| Check | Result |
+|---|---|
+| Boots under Sentinel | ✅ reaches the UI; no UART0 interrupt-watchdog hang (Sentinel #13 clock restore) |
+| Per-firmware view | ✅ `image + nvs + phy_init + slave_fw`, exactly as `compatibility.md` predicted |
+| Display | ✅ clean, correct image (user-confirmed) |
+| Touch | ✅ responds (read directly from the ST712x `0x55` controller) |
+| SD card | ✅ mounts (SDMMC, 14910 MB) |
+| Wi-Fi / C6 link | ✅ AP "GhostNet" comes up — the esp-hosted C6 link is functional |
+| C6 boot-guard (PR #6) | ✅ no auto-flash at boot; `info` still `c6 unknown` after a GhostESP boot |
+| Return to launcher (PR #2) | ✅ `reboot launcher` CLI → boot log shows `warm+armed/launcher+clean` |
+| Single-slot OTA guard (PR #2) | build-verified (a release is needed to exercise it live) |
+| `SENTINEL_APP_INFO` (PR #2) | present at image 0x120 (`SNAP`); in-launcher Update active once a release exists |
+
+Hardware findings, not defects in this work:
+- **C6 update does not complete over esp-hosted on this unit.** The user approved flashing the
+  C6 to 2.12.16; GhostESP's opt-in `c6ota force` wrote the image but `Req_OTAActivate` timed
+  out, and `info` still reads `c6 unknown`. The C6 is unchanged (not bricked). Its factory
+  firmware does not finish the esp-hosted OTA-activate handshake; a C6 update likely needs a
+  non-esp-hosted method (the device owner's call). Sentinel's own Wi-Fi also needs 2.12.x.
+- **`panel none` in the launcher after GhostESP runs.** GhostESP leaves the integrated ST712x
+  controller in a state the launcher cannot re-detect over a warm reset; a cold power cycle
+  recovers it. Addressed by the boot-time ST712x reset recommended above.
+
 ## Residual unknowns / recommendations
 
-- On-hardware validation of the JanOS CP2102N fix (needs a C5 board on this unit's USB-A).
+- On-hardware validation of the JanOS CP2102N fix (needs a C5 board on this unit's USB-A; none
+  was attached). The display/touch and SD paths are now hardware-validated.
 - The display warm-reset robustness items above (panel reset pulse, variant-probe retry, touch
   reset, keyboard queue flush) should be done and tested with the panel in hand.
 - A GitHub **release** (with the `GhostESP-Tab5-*.bin` assets) is required before Sentinel's
