@@ -6865,9 +6865,11 @@ void handle_hardware_button_press_options(InputEvent *event) {
                 // Non-settings menu selection
                 lv_obj_t *selected_obj = lv_obj_get_child(menu_container, selected_item_index);
                 if (selected_obj) {
-                    const char *selected_option = (const char *)lv_obj_get_user_data(selected_obj);
-                    if (selected_option) {
-                        handle_option_directly(selected_option);
+                    if (!options_view_activate_virtual_row(g_options_view, selected_obj)) {
+                        const char *selected_option = (const char *)lv_obj_get_user_data(selected_obj);
+                        if (selected_option) {
+                            handle_option_directly(selected_option);
+                        }
                     }
                 }
             }
@@ -6998,9 +7000,11 @@ void handle_hardware_button_press_options(InputEvent *event) {
             } else {
                 lv_obj_t *selected_obj = lv_obj_get_child(menu_container, selected_item_index);
                 if (selected_obj) {
-                    const char *selected_option = (const char *)lv_obj_get_user_data(selected_obj);
-                    if (selected_option) {
-                        handle_option_directly(selected_option);
+                    if (!options_view_activate_virtual_row(g_options_view, selected_obj)) {
+                        const char *selected_option = (const char *)lv_obj_get_user_data(selected_obj);
+                        if (selected_option) {
+                            handle_option_directly(selected_option);
+                        }
                     }
                 }
             }
@@ -7150,9 +7154,11 @@ void handle_hardware_button_press_options(InputEvent *event) {
                 // Non-settings menus: button selects the item
                 lv_obj_t *selected_obj = lv_obj_get_child(menu_container, selected_item_index);
                 if (selected_obj) {
-                    const char *selected_option = (const char *)lv_obj_get_user_data(selected_obj);
-                    if (selected_option) {
-                        handle_option_directly(selected_option);
+                    if (!options_view_activate_virtual_row(g_options_view, selected_obj)) {
+                        const char *selected_option = (const char *)lv_obj_get_user_data(selected_obj);
+                        if (selected_option) {
+                            handle_option_directly(selected_option);
+                        }
                     }
                 }
             }

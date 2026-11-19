@@ -232,11 +232,23 @@ root-caused from panic backtraces + a USB-C console capture (ELF `d88336081`) an
   with `flock_sniffer_cb`, unrecognised by `wifi_manager_start_monitor_mode()` → default
   `FILTER_MASK_ALL`; the CTRL-frame flood across a 250 ms / 14-ch hop wedges the SDIO-hosted C6,
   after which teardown RPCs time out ~5 s each. Fix: narrow Flock's promiscuous filter to
-  `MGMT|DATA` (what the callback reads). Verified over `flockscan`/`flockstop` CLI: 0 C6
-  timeouts in a 12 s scan, teardown 15 s → 0.4 s. Same class as the Airspace/Packet-Monitor
-  lockups — **any** `FILTER_MASK_ALL` + channel-hopping monitor wedges the hosted C6. Raw PCAP
-  capture and SAE flood intentionally keep `ALL`.
-- **Flaky-C6 `sta_get_ap_info` crash.** The vendored (in-tree) esp_hosted
-  `rpc_wifi_sta_get_ap_info()` `memcpy`'d from `resp->…out_list` after only a NULL check; a
-  flaky slave link returned a SUCCESS response with a non-NULL but garbage pointer (observed
-  `0xb816a398`). Now rejected via `esp_ptr_byte_accessible()` before the copy.
+  `MGMT|DATA` (what the callback reads). Observed over `flockscan`/`flockstop` CLI: 0 C6
+  timeouts in a 12 s scan, teardown 15 s → 0.4 s. **Caveat:** this was not a controlled A/B
+  against the old `ALL` filter (fresh boot, short run, CLI `flockstop` vs the UI's
+  `stop_all_operations`→`handle_stop_flipper`); a UI-path Flock-exit retest is recommended to
+  confirm. Same class as the Airspace/Packet-Monitor lockups — `FILTER_MASK_ALL` + a
+  channel-hopping monitor wedges the hosted C6. Raw PCAP capture and SAE flood intentionally
+  keep `ALL`. Note the exit teardown's own RPCs (`cancel_connect`'s `sta_get_ap_info`+
+  `disconnect`, monitor stop) still run on the UI thread, so a C6 degraded for other reasons
+  can still stall the exit regardless of the filter.
+- **`sta_get_ap_info` crash under a not-connected/degraded C6** (`Load access fault` in
+  `memcpy`, observed `out_list == 0xb816a398`). The slave replied `ESP_ERR_WIFI_NOT_CONNECT`
+  (`0x300F` — the "resp code 12303" log line) to `Req_WifiStaGetApInfo`, which
+  `wifi_manager_cancel_connect()` issues on **every** terminal/operation exit
+  (`wifi_manager.c:806`), i.e. this is reachable without Flock at all. The esp_hosted parser
+  already rejects a malformed response (local patch at `rpc_rsp.c:922`), so exactly how the
+  wrapper reached `memcpy` with `resp_event_status == SUCCESS` **and** a garbage `out_list` is
+  **not fully explained** (likely buffer reuse / timing in the degraded state). Added a
+  **defensive** guard — reject any `out_list` that is not `esp_ptr_byte_accessible()` before
+  the copy. This stops the observed fault but is mitigation, not a proven root-cause fix; a
+  readable-but-wrong pointer would still pass (returning junk AP info, not a crash).
