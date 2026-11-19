@@ -6377,7 +6377,10 @@ void handle_hardware_button_press_options(InputEvent *event) {
                         } else {
                             // Non-settings menus
                             lv_obj_t *sel = lv_obj_get_child(menu_container, selected_item_index);
-                            if (sel) handle_option_directly((const char*)lv_obj_get_user_data(sel));
+                            if (sel && !options_view_activate_virtual_row(g_options_view, sel)) {
+                                const char *opt = (const char*)lv_obj_get_user_data(sel);
+                                if (opt) handle_option_directly(opt);
+                            }
                         }
                     }
                     return;
@@ -6408,9 +6411,14 @@ void handle_hardware_button_press_options(InputEvent *event) {
                         int center_x = (btn_area.x1 + btn_area.x2) / 2;
                         settings_activate_row(i, data->point.x >= center_x);
                     } else {
-                        // non-settings menus
-                        const char *opt = (const char*)lv_obj_get_user_data(btn);
-                        handle_option_directly(opt);
+                        // non-settings menus. Virtual-list rows (AP/Station/scan
+                        // results) store an integer index in user_data, not an option
+                        // string; route them to the virtual activator so we never
+                        // strcmp() an index-as-pointer (that reboots the device).
+                        if (!options_view_activate_virtual_row(g_options_view, btn)) {
+                            const char *opt = (const char*)lv_obj_get_user_data(btn);
+                            if (opt) handle_option_directly(opt);
+                        }
                     }
                     return;
                 }
@@ -7458,6 +7466,13 @@ void option_event_cb(lv_event_t *e) {
     }
 
     const char *Selected_Option = (const char *)lv_event_get_user_data(e);
+
+    // Backstop: a NULL option must never reach the strcmp chain below (index-as-pointer
+    // from a virtual-list row is now routed away before this, but guard regardless).
+    if (!Selected_Option) {
+        option_invoked = false;
+        return;
+    }
 
     // Handle the "Back" option specifically (for encoder/joystick modes)
     if (strcmp(Selected_Option, "__BACK_OPTION__") == 0) {
@@ -10056,7 +10071,9 @@ void handle_option_directly(const char *Selected_Option) {
         }
         return;
     }
-    lv_event_t e;
+    // Non-settings path strcmp()s Selected_Option; a NULL here is not a valid option.
+    if (!Selected_Option) return;
+    lv_event_t e = {0};
     e.user_data = (void *)Selected_Option;
     option_event_cb(&e);
 }

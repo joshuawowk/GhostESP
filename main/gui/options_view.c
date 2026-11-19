@@ -619,6 +619,25 @@ static void virtual_row_event_cb(lv_event_t *e) {
     if (ov->virtual_activate_fn) ov->virtual_activate_fn(index, ov->virtual_user_data);
 }
 
+/* Activate a tapped row from a custom input loop that does not dispatch LVGL
+ * LV_EVENT_CLICKED. In virtual mode a row's user_data is an INTEGER INDEX (not an
+ * option string), so a caller must never pass it to a string-based dispatcher: that
+ * is the strcmp(NULL/tiny-pointer) crash on AP/Station/scan-result taps. Returns true
+ * whenever the view is in virtual mode (the row is consumed here — valid indices are
+ * activated, placeholder/empty rows are ignored), false otherwise so the caller can
+ * fall back to its ordinary string-option path. */
+bool options_view_activate_virtual_row(options_view_t *ov, lv_obj_t *row) {
+    if (!ov || !ov->virtual_mode) return false;
+    if (row && lv_obj_is_valid(row)) {
+        int index = (int)(intptr_t)lv_obj_get_user_data(row);
+        if (index >= 0 && index < ov->virtual_count) {
+            options_view_virtual_select(ov, index);
+            if (ov->virtual_activate_fn) ov->virtual_activate_fn(index, ov->virtual_user_data);
+        }
+    }
+    return true;
+}
+
 void options_view_virtual_start(options_view_t *ov,
                                 options_view_count_fn count_fn,
                                 options_view_fill_fn fill_fn,

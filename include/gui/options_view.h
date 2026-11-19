@@ -104,6 +104,11 @@ void options_view_virtual_refresh(options_view_t *ov);
 
 bool options_view_is_virtual(const options_view_t *ov);
 
+/* Activate a tapped row from a custom input loop (no LVGL LV_EVENT_CLICKED dispatch).
+ * In virtual mode the row's user_data is an index, not a string; returns true when the
+ * view is virtual (row consumed here), false so the caller uses its string-option path. */
+bool options_view_activate_virtual_row(options_view_t *ov, lv_obj_t *row);
+
 /* Number of items reported by count_fn (0 in non-virtual mode). */
 int options_view_virtual_count(const options_view_t *ov);
 
