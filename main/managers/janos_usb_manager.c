@@ -31,6 +31,7 @@
 
 #define JANOS_C5_VID 0x303A /* Espressif native USB */
 #define JANOS_C5_PID 0x1001 /* USB-Serial-JTAG CDC */
+#define JANOS_CP210X_VID 0x10C4 /* Silabs CP2102N (vendor class) */
 #define JANOS_BAUD 115200
 #define JANOS_RX_LINE_MAX 512
 #define JANOS_COLLECT_MAX 12288
@@ -304,11 +305,23 @@ static void janos_connect_task(void *arg)
     for (;;) {
         if (!s_connected) {
             cdc_acm_dev_hdl_t dev = NULL;
-            /* Try the JanOS native USB IDs first, then any CDC-ACM device (a
-             * JanOS build with a different PID still enumerates as CDC-ACM). */
+            bool is_cp210x = false;
+            /* Identify the bridge by which VID filter matches the opened device,
+             * so a CP2102N (Silabs, vendor class) takes the vendor-request path
+             * regardless of the diagnostic client's timing. Native Espressif C5
+             * first, then a CP2102N by VID (short probe, expected to fail for
+             * other bridges), then any CDC-ACM bridge (CH34x/CH9102) or a JanOS
+             * build with a different PID. */
             esp_err_t err = cdc_acm_host_open(JANOS_C5_VID, JANOS_C5_PID, 0, &dev_cfg, &dev);
             if (err != ESP_OK || !dev) {
-                err = cdc_acm_host_open(CDC_HOST_ANY_VID, CDC_HOST_ANY_PID, 0, &dev_cfg, &dev);
+                cdc_acm_host_device_config_t probe_cfg = dev_cfg;
+                probe_cfg.connection_timeout_ms = 500;
+                err = cdc_acm_host_open(JANOS_CP210X_VID, CDC_HOST_ANY_PID, 0, &probe_cfg, &dev);
+                if (err == ESP_OK && dev) {
+                    is_cp210x = true;
+                } else {
+                    err = cdc_acm_host_open(CDC_HOST_ANY_VID, CDC_HOST_ANY_PID, 0, &dev_cfg, &dev);
+                }
             }
             if (err == ESP_OK && dev) {
                 xSemaphoreTake(s_dev_mutex, portMAX_DELAY);
@@ -324,9 +337,10 @@ static void janos_connect_task(void *arg)
                 };
                 /* Configure the UART. A CP2102N is vendor-class (not CDC), so it
                  * needs Silabs vendor requests to enable the UART and set baud;
-                 * CH34x (CDC class) and native-USB C5s honour standard CDC
-                 * line coding. */
-                bool is_cp210x = (s_detected_vid == 0x10C4);
+                 * CH34x (CDC class) and native-USB C5s honour standard CDC line
+                 * coding. is_cp210x was determined above from the matching open
+                 * filter, not the diagnostic client's shared VID (which races). */
+                s_rxlen = 0; /* drop any partial line left from a previous session */
                 if (is_cp210x) {
                     cp210x_init(dev, JANOS_BAUD);
                     glog("C5 connected on USB-A (CP210x, 115200 8N1)\n");

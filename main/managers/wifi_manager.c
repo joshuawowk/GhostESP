@@ -2876,6 +2876,16 @@ static void janos_merge_cb(const char *ssid, const uint8_t bssid[6], uint8_t cha
                            int8_t rssi, const char *security, void *ctx) {
     janos_merge_ctx_t *m = (janos_merge_ctx_t *)ctx;
     if (m->n >= m->cap) return;
+    /* Dedup by BSSID: skip an AP already in the current scan list (e.g. a prior
+     * merge's 5 GHz entries that a short-circuited C6 rescan left in place) and
+     * duplicates within this batch, so repeated scans don't grow the list toward
+     * the MAX_SCANNED_APS cap with the same BSSIDs. */
+    for (int i = 0; i < (int)ap_count; i++) {
+        if (scanned_aps && memcmp(scanned_aps[i].bssid, bssid, 6) == 0) return;
+    }
+    for (int i = 0; i < m->n; i++) {
+        if (memcmp(m->buf[i].bssid, bssid, 6) == 0) return;
+    }
     wifi_ap_record_t *r = &m->buf[m->n++];
     memset(r, 0, sizeof(*r));
     strncpy((char *)r->ssid, ssid, sizeof(r->ssid) - 1);
