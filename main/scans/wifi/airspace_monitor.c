@@ -14,7 +14,12 @@
 
 #define AIRSPACE_MAX_DEVICES 32
 #define AIRSPACE_DEVICE_TTL_MS 30000U
-#define AIRSPACE_HOP_INTERVAL_MS 100U
+/* Channel-hop cadence. On the Tab5/P4 the C6 radio is remote over SDIO
+   (ESP-Hosted) and esp_wifi_set_channel() is a blocking RPC; hopping too fast
+   floods that RPC channel and eventually wedges it (set_channel stops
+   responding, freezing the UI). 250ms matches the Station Scan hopper, which is
+   known to work on this hardware. Was 100ms. */
+#define AIRSPACE_HOP_INTERVAL_MS 250U
 #define AIRSPACE_RATE_WINDOW_MS 500U
 
 /* Adaptive dwell: when kick frames are seen, camp on the current channel for

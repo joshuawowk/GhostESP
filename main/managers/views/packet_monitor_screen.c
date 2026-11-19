@@ -12,6 +12,7 @@
 #include "managers/views/options_screen.h"
 #include "managers/wifi_manager.h"
 #include "scans/wifi/wifi_channels.h"
+#include "esp_wifi.h"
 #include "lvgl.h"
 #include <ctype.h>
 #include <stdint.h>
@@ -466,6 +467,22 @@ static void packet_monitor_create_visualizer(void) {
     wifi_callbacks_set_pcap_enabled(false);
     wifi_raw_set_observer(packet_monitor_observer);
     wifi_manager_start_monitor_mode(wifi_raw_scan_callback);
+
+    /* wifi_raw_scan_callback defaults to FILTER_MASK_ALL (also used by raw PCAP
+       capture, which must keep everything). On the Tab5/P4 the C6 radio is
+       remote over SDIO and control frames (ACK/RTS/CTS) are by far the highest
+       volume; capturing them floods the link and interrupt-watchdog-panics the
+       device after ~a minute (which then warm-reset-loops on the wedged
+       USB-JTAG). The visualizer only needs frame *rates*, so narrow this session
+       to mgmt+data — the same profile as the Station Scan hopper, which is known
+       to run stably on this hardware. Scoped here so raw PCAP capture is
+       unaffected. */
+    {
+        wifi_promiscuous_filter_t pm_filter = {
+            .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA,
+        };
+        esp_wifi_set_promiscuous_filter(&pm_filter);
+    }
 
     if (s_start_mode == PACKET_START_CUSTOM) {
         esp_err_t err = wifi_manager_start_wireshark_channel_list(s_custom_channels, s_custom_channel_count);
