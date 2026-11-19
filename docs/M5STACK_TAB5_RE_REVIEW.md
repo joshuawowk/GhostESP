@@ -210,3 +210,33 @@ python3 -c "import struct;d=open('build/Ghost_ESP_IDF.bin','rb').read();print(st
 riscv32-esp-elf-nm build/Ghost_ESP_IDF.elf | grep -E 'sentinel_|ota_manager|_ota_'           # linked symbols
 strings firmware/crowpanel_p4/network_adapter.bin | grep -E '2\.12|ESP-Hosted'               # bundled C6 version
 ```
+
+## On-device validation & crash fixes (2026-11-19, v2.1.4)
+
+Validated the ST7121 Tab5 (MAC E8:F6:0A:E2:FC:56) under the Sentinel launcher. Beyond the
+touch/UX work in PR #11 (reliable ST712x touch, hidden single-slot Update row, home-screen
+"Return to Sentinel", top-left Back button), three device-crashing/freezing faults were
+root-caused from panic backtraces + a USB-C console capture (ELF `d88336081`) and fixed in
+**PR #12**:
+
+- **Scan APs / Scan Stations → tap a row → reboot** (deterministic, `Load access fault`).
+  Those result lists render through `options_view` in **virtual mode**, where each row's
+  `lv_obj` user_data is an **integer index** (index 0 == `NULL`), not an option string. The
+  custom Tab5 input loop (no LVGL `LV_EVENT_CLICKED` dispatch) read that index and passed it to
+  `handle_option_directly()` → `option_event_cb()`, which `strcmp()`'d it as a `char*`. Fix:
+  `options_view_activate_virtual_row()` routes a virtual-mode tap to the list's activate fn
+  (`show_ap_detail`/`show_station_detail`/…); `option_event_cb`/`handle_option_directly`
+  back-stop a NULL option. The same loop drives all vlist kinds (AP, STA, scanall, ARP, Govee,
+  mDNS, enum, BLE detect/adv/gatt) — all were affected, all now routed.
+- **Flock-exit freeze (~15 s)**, not a reboot. `flock_detector_start()` enters monitor mode
+  with `flock_sniffer_cb`, unrecognised by `wifi_manager_start_monitor_mode()` → default
+  `FILTER_MASK_ALL`; the CTRL-frame flood across a 250 ms / 14-ch hop wedges the SDIO-hosted C6,
+  after which teardown RPCs time out ~5 s each. Fix: narrow Flock's promiscuous filter to
+  `MGMT|DATA` (what the callback reads). Verified over `flockscan`/`flockstop` CLI: 0 C6
+  timeouts in a 12 s scan, teardown 15 s → 0.4 s. Same class as the Airspace/Packet-Monitor
+  lockups — **any** `FILTER_MASK_ALL` + channel-hopping monitor wedges the hosted C6. Raw PCAP
+  capture and SAE flood intentionally keep `ALL`.
+- **Flaky-C6 `sta_get_ap_info` crash.** The vendored (in-tree) esp_hosted
+  `rpc_wifi_sta_get_ap_info()` `memcpy`'d from `resp->…out_list` after only a NULL check; a
+  flaky slave link returned a SUCCESS response with a non-NULL but garbage pointer (observed
+  `0xb816a398`). Now rejected via `esp_ptr_byte_accessible()` before the copy.
