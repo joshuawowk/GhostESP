@@ -2094,6 +2094,14 @@ static bool settings_item_is_visible(const SettingsItem *item) {
         return false;
     }
 #if GHOSTESP_OTA_SUPPORTED
+    // Self-update needs a usable second app slot. Under Sentinel's single-slot
+    // view (ota_manager_is_supported() == false) the on-device update can only
+    // fail, so hide the rows instead of showing dead ones. Update via the launcher.
+    if ((item->setting_type == SETTING_OTA_CHECK_NOW ||
+         item->setting_type == SETTING_OTA_INSTALL_UPDATE) &&
+        !ota_manager_is_supported()) {
+        return false;
+    }
     if (item->setting_type == SETTING_OTA_INSTALL_FROM_SD && !ota_sd_install_available()) {
         return false;
     }

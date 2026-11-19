@@ -18,6 +18,7 @@
 #include "gui/theme_palette_api.h"
 #include "gui/accessibility_fonts.h"
 #include "gui/design_tokens.h"
+#include "gui/options_view.h"
 #include "gui/gui_anim.h"
 #include "gui/toast.h"
 #include "managers/views/error_popup.h"
@@ -1293,6 +1294,8 @@ static void set_radius_recursive(lv_obj_t *obj, lv_coord_t r) {
   }
 }
 
+static void dm_update_nav_back_btn(const View *view);
+
 void fade_out_ready_cb(lv_anim_t *anim) {
   display_manager_destroy_current_view();
 
@@ -1328,6 +1331,7 @@ void fade_out_ready_cb(lv_anim_t *anim) {
         lv_obj_set_style_opa(status_bar, LV_OPA_COVER, 0);
       }
     }
+    dm_update_nav_back_btn(new_view);
   }
 }
 
@@ -2700,6 +2704,16 @@ bool display_manager_register_view(View *view) {
 }
 
 static lv_obj_t *dm_pressed_obj = NULL;
+#if GUI_LARGE_TOUCH_UI
+/* On-screen top-left Back button (shown on views that can go back). The button is
+ * purely visual; the tap is detected in the input loop's hit test, which injects
+ * the same joystick-left event the active view treats as back. */
+static lv_obj_t *s_nav_back_btn = NULL;
+static bool s_nav_back_visible = false;
+static int s_nav_back_h = 55; /* set at runtime to the settings row ("About") height */
+#define NAV_BACK_BTN_X 6
+#define NAV_BACK_BTN_W 56
+#endif
 
 #if GUI_LARGE_TOUCH_UI
 static lv_obj_t *s_p4_home_indicator;
@@ -3440,6 +3454,50 @@ static bool dm_p4_control_center_handle_input(const InputEvent *event) {
 }
 #endif
 
+static void dm_update_nav_back_btn(const View *view) {
+#if GUI_LARGE_TOUCH_UI
+    bool wants = view && view != &splash_view && view != &main_menu_view &&
+                 view != &lockscreen_view;
+    s_nav_back_visible = wants;
+    if (!wants) {
+        if (s_nav_back_btn && lv_obj_is_valid(s_nav_back_btn)) {
+            lv_obj_add_flag(s_nav_back_btn, LV_OBJ_FLAG_HIDDEN);
+        }
+        return;
+    }
+    /* Match the height of a settings-menu row (the "About" button): base 55 px on
+     * the large panels, scaled by the user's Row Height setting. */
+    s_nav_back_h = options_view_scale_row_height(55);
+    if (s_nav_back_h < 40) s_nav_back_h = 40;
+    if (!s_nav_back_btn || !lv_obj_is_valid(s_nav_back_btn)) {
+        s_nav_back_btn = lv_obj_create(lv_layer_top());
+        if (!s_nav_back_btn) return;
+        lv_obj_remove_style_all(s_nav_back_btn);
+        lv_obj_set_size(s_nav_back_btn, NAV_BACK_BTN_W, s_nav_back_h);
+        lv_obj_set_style_radius(s_nav_back_btn, 10, 0);
+        lv_obj_set_style_bg_color(s_nav_back_btn, lv_color_black(), 0);
+        lv_obj_set_style_bg_opa(s_nav_back_btn, LV_OPA_50, 0);
+        lv_obj_set_style_border_width(s_nav_back_btn, 1, 0);
+        lv_obj_set_style_border_color(s_nav_back_btn, lv_color_white(), 0);
+        lv_obj_set_style_border_opa(s_nav_back_btn, LV_OPA_40, 0);
+        /* Visual only: the input loop's hit test handles the tap, so the button
+         * must not be clickable (it would otherwise intercept the loop's object
+         * search). */
+        lv_obj_clear_flag(s_nav_back_btn, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_t *lbl = lv_label_create(s_nav_back_btn);
+        lv_label_set_text(lbl, LV_SYMBOL_LEFT);
+        lv_obj_set_style_text_color(lbl, lv_color_white(), 0);
+        lv_obj_center(lbl);
+    }
+    lv_obj_set_size(s_nav_back_btn, NAV_BACK_BTN_W, s_nav_back_h); /* row height may change */
+    lv_obj_set_pos(s_nav_back_btn, NAV_BACK_BTN_X, GUI_STATUS_BAR_H + 4);
+    lv_obj_clear_flag(s_nav_back_btn, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(s_nav_back_btn);
+#else
+    (void)view;
+#endif
+}
+
 static void dm_clear_pressed_state(lv_obj_t *obj) {
     (void)obj;
     if (dm_pressed_obj) {
@@ -3490,6 +3548,7 @@ void display_manager_render_view(View *view) {
       lv_obj_set_style_opa(view->root, LV_OPA_COVER, 0);
       if (status_bar) lv_obj_set_style_opa(status_bar, LV_OPA_COVER, 0);
     }
+    dm_update_nav_back_btn(view);
 #ifdef CONFIG_GHOSTESP_P4_HMI
     dm_p4_animate_view_in(view->root);
 #endif
@@ -5173,6 +5232,24 @@ void hardware_input_task(void *pvParameters) {
         vTaskDelay(pdMS_TO_TICKS(20));
 #endif
       }
+#if GUI_LARGE_TOUCH_UI
+      if (!skip_event && s_nav_back_visible &&
+          touch_data.point.x <= (NAV_BACK_BTN_X + NAV_BACK_BTN_W + 8) &&
+          touch_data.point.y >= GUI_STATUS_BAR_H &&
+          touch_data.point.y <= (GUI_STATUS_BAR_H + 4 + s_nav_back_h + 8)) {
+        /* On-screen Back button (top-left): deliver the same event the active view
+         * treats as back (physical joystick-left) and consume the touch. */
+        InputEvent back_ev = {
+            .type = INPUT_TYPE_JOYSTICK,
+            .data.joystick_index = 0,
+            .data.joystick_pressed = true,
+        };
+        xQueueSend(input_queue, &back_ev, pdMS_TO_TICKS(10));
+        skip_event = true;
+        touch_active = true;
+        skip_next_release = true;
+      }
+#endif
       if (!skip_event) {
         touch_active = true;
         InputEvent event;
