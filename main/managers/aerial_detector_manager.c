@@ -270,7 +270,18 @@ static void start_wifi_phase(void) {
     // Use the shared monitor setup so C5 gets the correct dual-band PHY
     // configuration and receive-only channel policy.
     wifi_manager_start_monitor_mode(wifi_sniffer_callback);
-    
+
+    /* start_monitor_mode() does not recognise this callback and falls back to
+     * WIFI_PROMIS_FILTER_MASK_ALL. The sniffer only parses MGMT/DATA frames (the
+     * mask this detector set before the shared-monitor refactor). On the ESP32-P4
+     * the radio is the SDIO-hosted C6: a CTRL-frame flood across the channel hop
+     * saturates that link and wedges every RPC (same failure as the airspace and
+     * Flock lockups), so narrow it back. */
+    wifi_promiscuous_filter_t aerial_filter = {
+        .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA,
+    };
+    esp_wifi_set_promiscuous_filter(&aerial_filter);
+
     // start on first channel
     current_channel_index = 0;
     if (allowed_channel_count > 0) {

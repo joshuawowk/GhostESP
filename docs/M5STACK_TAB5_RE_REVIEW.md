@@ -228,6 +228,12 @@ root-caused from panic backtraces + a USB-C console capture (ELF `d88336081`) an
   (`show_ap_detail`/`show_station_detail`/…); `option_event_cb`/`handle_option_directly`
   back-stop a NULL option. The same loop drives all vlist kinds (AP, STA, scanall, ARP, Govee,
   mDNS, enum, BLE detect/adv/gatt) — all were affected, all now routed.
+  *Superseded by the Development-deki sync (Nov 2026):* upstream removed `options_view`'s
+  virtual mode entirely and moved these lists back to paged menus whose rows carry option
+  strings, so `options_view_activate_virtual_row()` is gone and every input path uses the
+  string dispatch again. Integer user_data rows now exist only in settings mode, which
+  `handle_option_directly()` handles; the NULL back-stops remain. **Retest the scan-result
+  tap on hardware after the sync.**
 - **Flock-exit freeze (~15 s)**, not a reboot. `flock_detector_start()` enters monitor mode
   with `flock_sniffer_cb`, unrecognised by `wifi_manager_start_monitor_mode()` → default
   `FILTER_MASK_ALL`; the CTRL-frame flood across a 250 ms / 14-ch hop wedges the SDIO-hosted C6,
