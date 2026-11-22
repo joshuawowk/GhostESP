@@ -5,11 +5,25 @@ name: Tab5 (Sentinel)
 # (v6.1), packages each one the way it is installed through Sentinel or
 # M5StackLauncher, and checks the image layout. The upstream multi-board
 # matrix (compile_all.yml) is manual-only on this fork.
+#
+# Every firmware push to main is published as a GitHub release, so Sentinel's
+# in-launcher Update always offers it (docs/SENTINEL.md, "Releases"). Sentinel
+# reads the latest non-prerelease release, offers it when its tag is a newer
+# version than the installed build, and downloads the file the image's
+# SENTINEL_APP_INFO block names. So the version job picks the next X.Y.Z
+# (version.txt when it is ahead, else the newest release with its patch
+# bumped), the build bakes it in as PROJECT_VER, each image is published under
+# the name its own block gives, and scripts/sentinel_release_check.py fails the
+# run if any of that does not line up. Pull requests run the same checks with a
+# pre-release version (X.Y.Z-dev.<sha>) and publish nothing.
 
 on:
   pull_request:
   push:
-    branches: [tab5-port]
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
   workflow_dispatch:
 
 permissions:
@@ -17,19 +31,53 @@ permissions:
 
 concurrency:
   group: tab5-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel a release run part-way; superseded PR runs can go.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  version:
+    name: Pick version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      release: ${{ steps.v.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IS_RELEASE: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+        run: |
+          set -euo pipefail
+          # Every X.Y.Z already used: release tags (drafts included) and bare tags.
+          { gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '.[].tag_name'
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/tags?per_page=100" --jq '.[].name'
+          } > used-tags.txt
+          next=$(python3 scripts/sentinel_release_check.py next-version < used-tags.txt)
+          if [ "$IS_RELEASE" = "true" ]; then
+            version="$next"
+          else
+            version="${next}-dev.${GITHUB_SHA::7}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "release=$IS_RELEASE" >> "$GITHUB_OUTPUT"
+          echo "### Version \`$version\` (release: $IS_RELEASE)" >> "$GITHUB_STEP_SUMMARY"
+
   build:
     name: Build ${{ matrix.target.name }}
+    needs: version
     runs-on: ubuntu-latest
 
     strategy:
       fail-fast: false
       matrix:
         target:
-          - { name: "M5Stack Tab5",             sdkconfig_file: "configs/sdkconfig.m5stack_tab5",           package: "GhostESP-Tab5" }
-          - { name: "M5Stack Tab5 (Landscape)", sdkconfig_file: "configs/sdkconfig.m5stack_tab5_landscape", package: "GhostESP-Tab5-Landscape" }
+          - { name: "M5Stack Tab5 (Portrait)",  sdkconfig_file: "configs/sdkconfig.m5stack_tab5" }
+          - { name: "M5Stack Tab5 (Landscape)", sdkconfig_file: "configs/sdkconfig.m5stack_tab5_landscape" }
+
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
 
     steps:
       - uses: actions/checkout@v4
@@ -78,25 +126,109 @@ jobs:
       - name: Build
         run: |
           . ~/esp-idf/export.sh
+          # PROJECT_VER comes from version.txt; Sentinel compares it with the tag.
+          echo "$VERSION" > version.txt
           rm -f sdkconfig sdkconfig.defaults
           cp "${{ matrix.target.sdkconfig_file }}" sdkconfig.defaults
           idf.py set-target esp32p4
           idf.py build
           grep -q '^CONFIG_M5STACK_TAB5=y' sdkconfig || { echo "not a Tab5 build"; exit 1; }
 
-      - name: Package for Sentinel / Launcher and check layout
+      - name: Package for Sentinel / Launcher and check
         run: |
           . ~/esp-idf/export.sh
-          python scripts/package_tab5_launcher.py --build-dir build --out dist --name "${{ matrix.target.package }}"
-          for img in dist/*.bin; do
-            python scripts/package_tab5_launcher.py --check "$img"
-          done
-          cp build/Ghost_ESP_IDF.bin "dist/${{ matrix.target.package }}-app.bin"
-          cp build/Ghost_ESP_IDF.elf "dist/${{ matrix.target.package }}.elf"
-          ls -l dist
+          check=scripts/sentinel_release_check.py
+          python "$check" verify build/Ghost_ESP_IDF.bin --version "$VERSION" --repo "$GITHUB_REPOSITORY"
+          # Publish under the file name the image itself names for Sentinel.
+          asset=$(python "$check" asset build/Ghost_ESP_IDF.bin)
+          name="${asset%.bin}"
+          mkdir -p dist debug
+          python scripts/package_tab5_launcher.py --build-dir build --out dist --name "$name"
+          python scripts/package_tab5_launcher.py --check "dist/$asset"
+          python "$check" verify "dist/$asset" --version "$VERSION" --repo "$GITHUB_REPOSITORY" --name-matches
+          cp build/Ghost_ESP_IDF.bin "debug/${name}-app.bin"
+          cp build/Ghost_ESP_IDF.elf "debug/${name}.elf"
+          echo "ASSET=$asset" >> "$GITHUB_ENV"
+          ls -l dist debug
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.target.package }}
+          name: sentinel-${{ env.ASSET }}
           path: dist/
           if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: debug-${{ env.ASSET }}
+          path: debug/
+          if-no-files-found: error
+
+  release:
+    name: Publish release v${{ needs.version.outputs.version }}
+    needs: [version, build]
+    if: needs.version.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: sentinel-*
+          path: dist
+          merge-multiple: true
+
+      - name: Check both images
+        run: |
+          set -euo pipefail
+          ls -l dist
+          n=0
+          for img in dist/*.bin; do
+            python3 scripts/sentinel_release_check.py verify "$img" \
+              --version "$VERSION" --repo "$GITHUB_REPOSITORY" --name-matches
+            n=$((n + 1))
+          done
+          [ "$n" -eq 2 ] || { echo "expected 2 images, found $n"; exit 1; }
+
+      - name: Create release
+        run: |
+          set -euo pipefail
+          prev=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name 2>/dev/null || true)
+          {
+            echo "M5Stack Tab5 build for the [Sentinel](https://github.com/joshuawowk/sentinel-bootloader) launcher, published automatically from \`main\` @ ${GITHUB_SHA::7}."
+            echo
+            echo "**Update:** open GhostESP's details in Sentinel and tap **Update** (Sentinel picks the file matching your orientation)."
+            echo "**Install:** \`sentinelctl.py -p <tab5-port> install GhostESP-Tab5-Landscape.bin GhostESP\` (or \`-Portrait\`). Never write these images at 0x0 on a Tab5 that runs a launcher."
+            echo
+            echo "| File | SHA-256 |"
+            echo "|---|---|"
+            for img in dist/*.bin; do
+              echo "| \`$(basename "$img")\` | \`$(sha256sum "$img" | cut -d' ' -f1)\` |"
+            done
+          } > notes.md
+          args=()
+          [ -n "$prev" ] && args+=(--notes-start-tag "$prev")
+          gh release create "v${VERSION}" dist/*.bin \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "v${VERSION} — M5Stack Tab5 (Sentinel)" \
+            --notes-file notes.md \
+            --generate-notes "${args[@]}" \
+            --latest
+
+      - name: Confirm Sentinel will see it
+        run: |
+          set -euo pipefail
+          # What Sentinel's update check reads: releases/latest, its tag and files.
+          latest=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest")
+          tag=$(jq -r .tag_name <<<"$latest")
+          [ "$tag" = "v${VERSION}" ] || { echo "releases/latest is $tag, not v${VERSION}"; exit 1; }
+          for img in dist/*.bin; do
+            jq -e --arg n "$(basename "$img")" '.assets | map(.name) | index($n)' <<<"$latest" >/dev/null \
+              || { echo "release is missing $(basename "$img")"; exit 1; }
+          done
+          echo "### Published v${VERSION}: $(jq -r .html_url <<<"$latest")" >> "$GITHUB_STEP_SUMMARY"

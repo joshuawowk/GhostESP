@@ -92,17 +92,38 @@ the Sentinel SDK as [`include/sentinel_app.h`](../include/sentinel_app.h). Senti
 update when a GitHub **release** on that repository has a tag that is a newer version than the
 build's `PROJECT_VER` (set from [`version.txt`](../version.txt)) and carries the named asset.
 
-**Releasing:** bump `version.txt` for every release *before* building, and tag the release to
-match (e.g. `version.txt` = `2.1.4`, tag `v2.1.4`). If the asset's `PROJECT_VER` lags its tag,
-Sentinel re-offers the same version forever; if it leads, the release is never offered. Release
-**v2.1.3** (both Tab5 images) is published. A device must be running a build made with
-`version.txt` for its version to compare — a bare-`git describe` hash does not. Verify the
-descriptor is in a build with:
+## Releases: automatic on every push to `main`
+
+[`.github/workflows/tab5_sentinel.yml`](../.github/workflows/tab5_sentinel.yml) publishes every
+firmware change that lands on `main` as a GitHub release Sentinel will offer. Nothing has to be
+done by hand: merge to `main` and the release appears (pushes that only touch `docs/` or
+Markdown are skipped, since the firmware is unchanged).
+
+1. **Version.** The *version* job picks the next `X.Y.Z`: [`version.txt`](../version.txt) when it
+   is ahead of every tag already used on this repository, otherwise the newest tag with its patch
+   number bumped. So `version.txt` is a floor: leave it alone for a patch release, raise it
+   (e.g. to `2.4.0`) to start a new minor or major line. CI never commits it back.
+2. **Build.** Each Tab5 profile is built with that version written to `version.txt`, so the
+   image's `PROJECT_VER` equals the tag minus the `v`. If it lagged, Sentinel would re-offer the
+   same release forever; if it led, the release would never be offered.
+3. **Check.** [`scripts/sentinel_release_check.py`](../scripts/sentinel_release_check.py)
+   fails the run unless the image carries the `SNAP` block at app offset `0x120` naming this
+   repository, its `PROJECT_VER` is the chosen version, and the packaged file is named exactly
+   what the block names (`GhostESP-Tab5-Portrait.bin`, `GhostESP-Tab5-Landscape.bin`). The file
+   name comes from the image itself, so the two can't drift apart.
+4. **Publish.** One release, `vX.Y.Z`, with both images, marked *Latest* (never a draft or
+   pre-release, which `releases/latest` would skip), and then checked the way Sentinel reads it:
+   `releases/latest` must return that tag and both files.
+
+Pull requests run steps 1-3 with a pre-release version (`X.Y.Z-dev.<sha>`, which Sentinel orders
+below `X.Y.Z`) and publish nothing; their images are in the run's artifacts. A device running a
+local or PR build is offered the next release when it is published.
+
+Check any image (app `.bin` or the merged release image) by hand:
 
 ```bash
-python3 -c "import struct,sys; d=open(sys.argv[1],'rb').read(); \
-print(struct.unpack_from('<IHH', d, 0x120))" build/Ghost_ESP_IDF.bin
-# -> (1346457171, 1, 256)   # 1346457171 == 0x50414E53 'SNAP'
+python3 scripts/sentinel_release_check.py verify local_builds/GhostESP-Tab5-Landscape.bin \
+    --version "$(cat version.txt)" --repo joshuawowk/GhostESP --name-matches
 ```
 
 ## The ESP32-C6 radio — never auto-replaced under a launcher

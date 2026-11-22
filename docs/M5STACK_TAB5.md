@@ -9,6 +9,26 @@ Advanced P4** boards, including the custom "ghost raw-radio" C6 slave image
 on 2.4 GHz Wi-Fi + BLE with no radio rewrite — this is a board bring-up, not a
 port of the radio stack.
 
+## This fork: branches, releases, upstream
+
+- **`main`** (the default branch) is the Tab5 + Sentinel firmware. CI builds only the two
+  Tab5 profiles, and every firmware push to `main` is published as a GitHub release that
+  Sentinel's in-launcher **Update** offers. See [`SENTINEL.md`](SENTINEL.md#releases-automatic-on-every-push-to-main).
+- **Upstream** is [GhostESP-Revival/GhostESP](https://github.com/GhostESP-Revival/GhostESP),
+  branch `Development-deki`. Sync it with a **merge** commit, never a squash: a squash drops
+  the upstream parent, so the fork keeps showing as behind and the next sync conflicts again.
+
+  ```bash
+  git remote add upstream https://github.com/GhostESP-Revival/GhostESP.git   # once
+  git fetch upstream Development-deki --no-tags
+  git switch -c sync/upstream origin/main && git merge upstream/Development-deki
+  # resolve, build both Tab5 profiles, open a PR into main, merge it with "Create a merge commit"
+  ```
+
+  After a sync, check for new `wifi_manager_start_monitor_mode()` callers that would run
+  with `FILTER_MASK_ALL` (it wedges the Tab5's hosted C6), and for shared code that tests
+  `CONFIG_CROWPANEL_ADVANCED_P4` where the Tab5 needs `CONFIG_GHOSTESP_P4_HMI`.
+
 ## What works
 
 - **2.4 GHz Wi-Fi + BLE** via the onboard C6 (ESP-Hosted SDIO), including the
