@@ -1,0 +1,102 @@
+name: Tab5 (Sentinel)
+
+# This fork only targets the M5Stack Tab5 running the Sentinel launcher. It
+# builds both Tab5 profiles with the same ESP-IDF the port is developed on
+# (v6.1), packages each one the way it is installed through Sentinel or
+# M5StackLauncher, and checks the image layout. The upstream multi-board
+# matrix (compile_all.yml) is manual-only on this fork.
+
+on:
+  pull_request:
+  push:
+    branches: [tab5-port]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tab5-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build ${{ matrix.target.name }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { name: "M5Stack Tab5",             sdkconfig_file: "configs/sdkconfig.m5stack_tab5",           package: "GhostESP-Tab5" }
+          - { name: "M5Stack Tab5 (Landscape)", sdkconfig_file: "configs/sdkconfig.m5stack_tab5_landscape", package: "GhostESP-Tab5-Landscape" }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - uses: actions/cache@v4
+        id: cache-idf
+        with:
+          path: |
+            ~/esp-idf
+            ~/.espressif
+          key: esp-idf-v6.1-esp32p4-${{ runner.os }}-v1
+
+      - name: Install ESP-IDF dependencies
+        if: steps.cache-idf.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget git flex bison gperf python3-pip python3-setuptools cmake ninja-build ccache libffi-dev libssl-dev dfu-util
+
+      - name: Install ESP-IDF v6.1
+        if: steps.cache-idf.outputs.cache-hit != 'true'
+        run: |
+          git clone -b v6.1 --depth 1 --recursive https://github.com/espressif/esp-idf.git ~/esp-idf
+          ~/esp-idf/install.sh esp32p4
+
+      - name: Repair cached ESP-IDF Python environment if broken
+        if: steps.cache-idf.outputs.cache-hit == 'true'
+        run: |
+          # The cached venv symlinks into the runner's Python toolcache, which
+          # moves on image updates; rebuild just the venv if it broke.
+          IDF_VER=$(sed -nE 's/^#define ESP_IDF_VERSION_(MAJOR|MINOR) +([0-9]+)/\2/p' \
+            ~/esp-idf/components/esp_common/include/esp_idf_version.h | paste -sd.)
+          PY_VER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+          VENV="$HOME/.espressif/python_env/idf${IDF_VER}_py${PY_VER}_env"
+          if [ -x "$VENV/bin/python" ]; then
+            echo "ESP-IDF Python env is usable: $VENV"
+          else
+            echo "Cached ESP-IDF Python env ($VENV) is missing or broken; recreating..."
+            rm -rf "$VENV"
+            ~/esp-idf/install.sh esp32p4
+          fi
+
+      - name: Build
+        run: |
+          . ~/esp-idf/export.sh
+          rm -f sdkconfig sdkconfig.defaults
+          cp "${{ matrix.target.sdkconfig_file }}" sdkconfig.defaults
+          idf.py set-target esp32p4
+          idf.py build
+          grep -q '^CONFIG_M5STACK_TAB5=y' sdkconfig || { echo "not a Tab5 build"; exit 1; }
+
+      - name: Package for Sentinel / Launcher and check layout
+        run: |
+          . ~/esp-idf/export.sh
+          python scripts/package_tab5_launcher.py --build-dir build --out dist --name "${{ matrix.target.package }}"
+          for img in dist/*.bin; do
+            python scripts/package_tab5_launcher.py --check "$img"
+          done
+          cp build/Ghost_ESP_IDF.bin "dist/${{ matrix.target.package }}-app.bin"
+          cp build/Ghost_ESP_IDF.elf "dist/${{ matrix.target.package }}.elf"
+          ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target.package }}
+          path: dist/
+          if-no-files-found: error

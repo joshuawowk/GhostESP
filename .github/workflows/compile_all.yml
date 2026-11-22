@@ -1,7 +1,8 @@
 name: Compile Ghost ESP
 
+# This fork targets only the M5Stack Tab5 + Sentinel (see tab5_sentinel.yml);
+# the upstream all-boards matrix is kept for manual runs and upstream syncs.
 on:
-  pull_request:
   workflow_dispatch:
     inputs:
       buildType:
